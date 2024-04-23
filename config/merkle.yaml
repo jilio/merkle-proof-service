@@ -1,0 +1,5 @@
+log_level: debug
+
+# TODO: support multiple endpoints
+evm_rpc: wss://evm-rpc-ws-reticulum.galactica.com
+
