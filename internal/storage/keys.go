@@ -14,4 +14,9 @@
  * limitations under the License.
  */
 
-package contract
+package storage
+
+var (
+	JobKeyPrefix        = byte(0x00)
+	MerkleTreeKeyPrefix = byte(0x01)
+)

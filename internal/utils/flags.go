@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package viperhelper
+package utils
 
 import (
 	"github.com/spf13/pflag"

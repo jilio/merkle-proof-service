@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 
 	"github.com/cometbft/cometbft/libs/log"
@@ -29,7 +30,7 @@ import (
 
 	"github.com/Galactica-corp/merkle-proof-service/cmd/galacticad-merkle/cmd/ctx"
 	"github.com/Galactica-corp/merkle-proof-service/cmd/galacticad-merkle/cmd/indexer"
-	"github.com/Galactica-corp/merkle-proof-service/internal/viperhelper"
+	"github.com/Galactica-corp/merkle-proof-service/internal/utils"
 )
 
 const (
@@ -67,14 +68,12 @@ This is a CLI tool to interact with the Galactica Network merkle service.`,
 }
 
 func Execute() {
-	rootCtx, cancel := context.WithCancel(context.Background())
+	rootCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
 	rootCmd := initRootCmd(createRootCmd())
-
 	if err := rootCmd.ExecuteContext(rootCtx); err != nil {
 		fmt.Println(err)
-		os.Exit(1)
 	}
 }
 
@@ -90,7 +89,7 @@ func initRootCmd(rootCmd *cobra.Command) *cobra.Command {
 	rootCmd.PersistentFlags().StringVar(&cfg.LogLevel, FlagLogLevel, DefaultLogLevel, "log level, available options: [debug, info, error, none]")
 
 	// bind flags to viper
-	viperhelper.MustBindPFlag(viper.GetViper(), ViperLogLevel, rootCmd.PersistentFlags().Lookup(FlagLogLevel))
+	utils.MustBindPFlag(viper.GetViper(), ViperLogLevel, rootCmd.PersistentFlags().Lookup(FlagLogLevel))
 
 	// bind env variables to viper
 	viper.MustBindEnv(FlagHome, EnvHome)

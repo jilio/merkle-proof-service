@@ -19,7 +19,7 @@ package indexer
 import (
 	"context"
 	"fmt"
-	"unsafe"
+	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	db "github.com/cometbft/cometbft-db"
@@ -27,10 +27,9 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 
 	"github.com/Galactica-corp/merkle-proof-service/internal/merkle"
-	"github.com/Galactica-corp/merkle-proof-service/internal/storage"
 )
 
-func StartServer(ctx context.Context, evmRpc string, dbPath string, logger log.Logger) error {
+func StartServer(ctx context.Context, evmRpc string, dbPath string, jobs []JobDescriptor, logger log.Logger) error {
 	logger.Info("starting merkle indexer server")
 
 	var ethereumClient *ethclient.Client
@@ -55,61 +54,65 @@ func StartServer(ctx context.Context, evmRpc string, dbPath string, logger log.L
 
 	logger.Info("latest block", "number", latestBlock.Number().Uint64())
 
-	logger.Info("initializing storage")
-
-	storageDB, err := db.NewGoLevelDB("merkle", dbPath)
+	// Initialize storage
+	logger.Info("initializing merkle storage")
+	merkleDB, err := db.NewGoLevelDB("merkle", dbPath)
 	if err != nil {
 		logger.Error("create storage DB", "error", err)
 		return fmt.Errorf("create storage DB: %w", err)
 	}
+	treeStorage := merkle.NewSparseTreeStorage(merkleDB)
+	jobsStorage := NewJobStorage(merkleDB)
 
-	merkleDB := db.NewPrefixDB(storageDB, []byte("merkle:"))
-	merkleStorage := storage.NewStorage(merkleDB)
-
-	logger.Info("initializing empty tree")
-	treeDepth := 20
-	merkleTree, err := merkle.NewEmptyTree(treeDepth, merkle.EmptyLeafValue)
+	// Create sparse merkle tree
+	merkleTree, err := merkle.NewSparseTree(merkle.TreeDepth, merkle.EmptyLeafValue, treeStorage)
 	if err != nil {
 		logger.Error("create empty tree", "error", err)
 		return fmt.Errorf("create empty tree: %w", err)
 	}
 
-	treeTotalBytes := int(calculateTreeSize(merkleTree))
-
-	humanSize := fmt.Sprintf("%.2f", float64(treeTotalBytes)/1024/1024)
-
-	logger.Info(
-		"empty tree created successfully",
-		"depth", treeDepth,
-		"root", merkleTree.Root().Value.String(),
-		"leaves", merkleTree.GetLeavesAmount(),
-		"tree_size", len(merkleTree.Nodes),
-		"tree_total_size", humanSize+"MB",
+	eventsIndexer := NewEVMIndexer(
+		ethereumClient,
+		logger.With("service", "events_indexer"),
 	)
 
-	logger.Info("setting subtree for contract")
-	if err := merkleStorage.SetSubTreeForContract("test_contract", 0, merkleTree); err != nil {
-		return fmt.Errorf("set subtree for contract: %w", err)
-	}
-	logger.Info("subtree set successfully")
+	events := NewEventHandlerFactory(ethereumClient, merkleTree)
 
-	//merkleDB.Stats()
-	// print the stats of the merkleDB:
-	stats := merkleDB.Stats()
-	for k, v := range stats {
-		logger.Info("merkleDB stats", k, v)
+	configurator, err := InitConfiguratorFromStorage(
+		ctx,
+		events,
+		eventsIndexer,
+		logger.With("svc", "confer"),
+		jobsStorage,
+		merkleDB,
+	)
+	if err != nil {
+		return fmt.Errorf("init configurator: %w", err)
 	}
+
+	if err := configurator.ReloadConfig(ctx, jobs); err != nil {
+		return fmt.Errorf("start job: %w", err)
+	}
+
+	<-ctx.Done()
+	logger.Info("shutting down indexer server")
 
 	// close the connection
 	ethereumClient.Close()
+	logger.Info("closed EVM RPC connection")
+
+	// report for every job the last known block
+	ctxReport, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	finishedJobs, err := jobsStorage.SelectAllJobs(ctxReport)
+	if err != nil {
+		logger.Error("select all jobs", "error", err)
+		return fmt.Errorf("select all jobs: %w", err)
+	}
+
+	for _, job := range finishedJobs {
+		logger.Info("job successfully stopped", "job", job.String())
+	}
 
 	return nil
-}
-
-func calculateTreeSize(tree *merkle.Tree) uintptr {
-	var size uintptr
-	for _, node := range tree.Nodes {
-		size += unsafe.Sizeof(*node.Value) // size of *uint256.Int
-	}
-	return size
 }
