@@ -31,9 +31,11 @@ func TestJobStorage_UpsertJob(t *testing.T) {
 	batch := memDB.NewBatch()
 
 	job := Job{
-		Address:      common.HexToAddress("0x0000000000000000000000000000000000000001"),
-		Contract:     ContractKYCRecordRegistry,
-		StartBlock:   10,
+		JobDescriptor: JobDescriptor{
+			Address:    common.HexToAddress("0x0000000000000000000000000000000000000001"),
+			Contract:   ContractKYCRecordRegistry,
+			StartBlock: 10,
+		},
 		CurrentBlock: 11,
 	}
 
@@ -56,16 +58,20 @@ func TestJobStorage_UpsertMultipleJobsWithSameAddressAndContract(t *testing.T) {
 	batch := memDB.NewBatch()
 
 	job1 := Job{
-		Address:      common.HexToAddress("0x0000000000000000000000000000000000000001"),
-		Contract:     ContractKYCRecordRegistry,
-		StartBlock:   10,
+		JobDescriptor: JobDescriptor{
+			Address:    common.HexToAddress("0x0000000000000000000000000000000000000001"),
+			Contract:   ContractKYCRecordRegistry,
+			StartBlock: 10,
+		},
 		CurrentBlock: 11,
 	}
 
 	job2 := Job{
-		Address:      common.HexToAddress("0x0000000000000000000000000000000000000001"),
-		Contract:     ContractKYCRecordRegistry,
-		StartBlock:   15,
+		JobDescriptor: JobDescriptor{
+			Address:    common.HexToAddress("0x0000000000000000000000000000000000000001"),
+			Contract:   ContractKYCRecordRegistry,
+			StartBlock: 15,
+		},
 		CurrentBlock: 15,
 	}
 
@@ -92,16 +98,20 @@ func TestJobStorage_DeleteJob(t *testing.T) {
 	batch := memDB.NewBatch()
 
 	job1 := Job{
-		Address:      common.HexToAddress("0x0000000000000000000000000000000000000001"),
-		Contract:     ContractKYCRecordRegistry,
-		StartBlock:   10,
+		JobDescriptor: JobDescriptor{
+			Address:    common.HexToAddress("0x0000000000000000000000000000000000000001"),
+			Contract:   ContractKYCRecordRegistry,
+			StartBlock: 10,
+		},
 		CurrentBlock: 11,
 	}
 
 	job2 := Job{
-		Address:      common.HexToAddress("0x0000000000000000000000000000000000000002"),
-		Contract:     ContractKYCRecordRegistry,
-		StartBlock:   10,
+		JobDescriptor: JobDescriptor{
+			Address:    common.HexToAddress("0x0000000000000000000000000000000000000002"),
+			Contract:   ContractKYCRecordRegistry,
+			StartBlock: 10,
+		},
 		CurrentBlock: 11,
 	}
 
@@ -116,7 +126,7 @@ func TestJobStorage_DeleteJob(t *testing.T) {
 
 	// Delete the first job
 	batch = memDB.NewBatch()
-	err = storage.DeleteJob(context.Background(), batch, DeleteJobParams{
+	err = storage.DeleteJob(context.Background(), batch, JobDescriptor{
 		Address:    job1.Address,
 		Contract:   job1.Contract,
 		StartBlock: job1.StartBlock,

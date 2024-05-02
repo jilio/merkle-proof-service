@@ -65,7 +65,10 @@ func CreateStartCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("get indexer jobs: %w", err)
 			}
-			logger.Info("jobs found in config", "jobs", jobs)
+
+			for _, job := range jobs {
+				logger.Info("job found in config", "job", job.String())
+			}
 
 			serverLogger := logger.With("service", "merkle")
 

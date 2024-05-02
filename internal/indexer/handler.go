@@ -19,63 +19,83 @@ package indexer
 import (
 	"context"
 
+	db "github.com/cometbft/cometbft-db"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
-
-	"github.com/Galactica-corp/merkle-proof-service/internal/storage"
 )
 
 type (
-	// PrepareContextHandler prepares storage.Context for handling events. It should be called before handling events.
+	// PrepareContextFunc prepares storage.Context for handling events. It should be called before handling events.
 	// It's called once for every block range that is queried.
-	PrepareContextHandler func(ctx context.Context) (storage.Context, error)
+	PrepareContextFunc func(ctx context.Context) (context.Context, error)
 
 	// EVMLogHandler is called for every log that was retrieved from the blockchain.
 	//
 	//  1. It's guaranteed that the handler will (almost always) be called for consecutive logs in the chronological order.
 	//  2. It's guaranteed that the handler will be called firstly for every historical log, then for live subscribed logs.
 	//
-	// EVMIndexer may call this handler for duplicating logs
+	// EVMLogsIndexer may call this handler for duplicating logs
 	// if the live subscription will return the same part of logs as the last historical query.
 	// Thus, it's the one and the only case, when rule 1 will be violated.
-	EVMLogHandler func(ctx storage.Context, log types.Log) error
+	EVMLogHandler func(ctx context.Context, log types.Log) error
 
-	// ProgressHandler is called after each time indexer queries and handles historical events in some block range.
+	// CommitFunc is called after each time indexer queries and handles historical events in some block range.
 	// It passes block number of the end of this range, which means that this is the highest block number that was indexed.
-	ProgressHandler func(ctx storage.Context, block uint64) error
+	CommitFunc func(ctx context.Context, batch db.Batch, block uint64) error
 
-	Handlers interface {
-		PrepareContext(ctx context.Context) (storage.Context, error)
-		HandleEVMLog(ctx storage.Context, log types.Log) error
-		HandleProgress(ctx storage.Context, block uint64) error
-	}
+	// FilterQueryFunc returns a filter query that should be used for subscribing to new logs.
+	FilterQueryFunc func() (ethereum.FilterQuery, error)
 
-	evmHandlers struct {
-		prepCtxHandler  PrepareContextHandler
-		progressHandler ProgressHandler
-		evmLogHandler   EVMLogHandler
+	EvmHandlers struct {
+		prepCtxHandler PrepareContextFunc
+		evmLogHandler  EVMLogHandler
+		committer      CommitFunc
+		filterQuery    FilterQueryFunc
 	}
 )
 
-func NewEVMHandlers(
-	prepCtxHandler PrepareContextHandler,
-	progressHandler ProgressHandler,
+func NewEVMJob(
+	prepCtxHandler PrepareContextFunc,
 	evmLogHandler EVMLogHandler,
-) Handlers {
-	return &evmHandlers{
-		prepCtxHandler:  prepCtxHandler,
-		progressHandler: progressHandler,
-		evmLogHandler:   evmLogHandler,
+	committer CommitFunc,
+	filterQuery FilterQueryFunc,
+) *EvmHandlers {
+	return &EvmHandlers{
+		prepCtxHandler: prepCtxHandler,
+		evmLogHandler:  evmLogHandler,
+		committer:      committer,
+		filterQuery:    filterQuery,
 	}
 }
 
-func (h *evmHandlers) PrepareContext(ctx context.Context) (storage.Context, error) {
+func (h *EvmHandlers) PrepareContext(ctx context.Context) (context.Context, error) {
+	if h.prepCtxHandler == nil {
+		return ctx, nil
+	}
+
 	return h.prepCtxHandler(ctx)
 }
 
-func (h *evmHandlers) HandleEVMLog(ctx storage.Context, log types.Log) error {
+func (h *EvmHandlers) HandleEVMLog(ctx context.Context, log types.Log) error {
+	if h.evmLogHandler == nil {
+		return nil
+	}
+
 	return h.evmLogHandler(ctx, log)
 }
 
-func (h *evmHandlers) HandleProgress(ctx storage.Context, block uint64) error {
-	return h.progressHandler(ctx, block)
+func (h *EvmHandlers) Commit(ctx context.Context, batch db.Batch, block uint64) error {
+	if h.committer == nil {
+		return nil
+	}
+
+	return h.committer(ctx, batch, block)
+}
+
+func (h *EvmHandlers) FilterQuery() (ethereum.FilterQuery, error) {
+	if h.filterQuery == nil {
+		return ethereum.FilterQuery{}, nil
+	}
+
+	return h.filterQuery()
 }

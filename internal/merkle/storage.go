@@ -27,30 +27,30 @@ import (
 )
 
 // keySize is the size of the key in bytes used to store a leaf node in the sparse tree.
-const keySize = 6
+// The key is composed of:
+// 1 byte for prefix
+// 1 byte for contract index
+// 1 byte for level
+// 4 bytes for index
+const keySize = 1 + 1 + 1 + 4
 
 var (
 	ErrNotFound = fmt.Errorf("not found")
 )
 
 type (
-	BatchWithLeavesGetterSetter interface {
-		db.Batch
-		SetLeaf(level uint8, index uint32, value *uint256.Int) error
-		GetLeaf(level uint8, index uint32) (*uint256.Int, error)
-	}
-
 	SparseTreeStorage struct {
-		database db.DB
+		database      db.DB
+		contractIndex TreeAddressIndex
 	}
 )
 
-func NewSparseTreeStorage(database db.DB) *SparseTreeStorage {
-	return &SparseTreeStorage{database: database}
+func NewSparseTreeStorage(database db.DB, contractIndex TreeAddressIndex) *SparseTreeStorage {
+	return &SparseTreeStorage{database: database, contractIndex: contractIndex}
 }
 
 func (s *SparseTreeStorage) GetLeaf(level uint8, index uint32) (*uint256.Int, error) {
-	leafBytes, err := s.database.Get(makeLeafKey(level, index))
+	leafBytes, err := s.database.Get(makeLeafKey(s.contractIndex, level, index))
 	if err != nil {
 		return nil, err
 	}
@@ -62,16 +62,20 @@ func (s *SparseTreeStorage) GetLeaf(level uint8, index uint32) (*uint256.Int, er
 	return uint256.NewInt(0).SetBytes(leafBytes), nil
 }
 
-func (s *SparseTreeStorage) NewBatch() BatchWithLeavesGetterSetter {
-	return NewBatchWithLeavesBuffer(s.database.NewBatch())
+func (s *SparseTreeStorage) SetLeaf(level uint8, index uint32, value *uint256.Int) error {
+	return s.database.Set(makeLeafKey(s.contractIndex, level, index), value.Bytes())
+}
+
+func (s *SparseTreeStorage) NewBatch() *BatchWithLeavesBuffer {
+	return NewBatchWithLeavesBuffer(s.database.NewBatch(), s.contractIndex)
 }
 
 // makeLeafKey creates a key for a leaf node in the sparse tree.
-// The key is composed of: leafKeyPrefix, level, index.
-func makeLeafKey(level uint8, index uint32) []byte {
-	key := make([]byte, keySize) // 1 byte for leafKeyPrefix, 1 byte for level, 4 bytes for index
+func makeLeafKey(contractIndex TreeAddressIndex, level uint8, index uint32) []byte {
+	key := make([]byte, keySize)
 	key[0] = storage.MerkleTreeKeyPrefix
-	key[1] = level
-	binary.BigEndian.PutUint32(key[2:], index)
+	key[1] = byte(contractIndex)
+	key[2] = level
+	binary.BigEndian.PutUint32(key[3:], index)
 	return key
 }

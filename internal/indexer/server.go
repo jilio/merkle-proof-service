@@ -61,31 +61,25 @@ func StartServer(ctx context.Context, evmRpc string, dbPath string, jobs []JobDe
 		logger.Error("create storage DB", "error", err)
 		return fmt.Errorf("create storage DB: %w", err)
 	}
-	treeStorage := merkle.NewSparseTreeStorage(merkleDB)
-	jobsStorage := NewJobStorage(merkleDB)
 
-	// Create sparse merkle tree
-	merkleTree, err := merkle.NewSparseTree(merkle.TreeDepth, merkle.EmptyLeafValue, treeStorage)
-	if err != nil {
-		logger.Error("create empty tree", "error", err)
-		return fmt.Errorf("create empty tree: %w", err)
+	addressIndexStorage := merkle.NewAddressIndexStorage(merkleDB)
+	treeFactory := merkle.NewTreeFactoryCached(
+		merkle.TreeDepth,
+		merkle.EmptyLeafValue,
+		addressIndexStorage,
+	)
+
+	for _, job := range jobs {
+		if _, err := addressIndexStorage.ApplyAddressToIndex(job.Address); err != nil {
+			logger.Error("get tree for address", "error", err)
+			return fmt.Errorf("get tree for address: %w", err)
+		}
 	}
 
-	eventsIndexer := NewEVMIndexer(
-		ethereumClient,
-		logger.With("service", "events_indexer"),
-	)
-
-	events := NewEventHandlerFactory(ethereumClient, merkleTree)
-
-	configurator, err := InitConfiguratorFromStorage(
-		ctx,
-		events,
-		eventsIndexer,
-		logger.With("svc", "confer"),
-		jobsStorage,
-		merkleDB,
-	)
+	jobStorage := NewJobStorage(merkleDB)
+	evmIndexer := NewEVMIndexer(ethereumClient, merkleDB, logger)
+	jobFactory := NewJobFactory(ethereumClient, treeFactory, logger)
+	configurator, err := InitConfiguratorFromStorage(ctx, jobStorage, jobFactory, evmIndexer, logger)
 	if err != nil {
 		return fmt.Errorf("init configurator: %w", err)
 	}
@@ -104,7 +98,7 @@ func StartServer(ctx context.Context, evmRpc string, dbPath string, jobs []JobDe
 	// report for every job the last known block
 	ctxReport, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	finishedJobs, err := jobsStorage.SelectAllJobs(ctxReport)
+	finishedJobs, err := jobStorage.SelectAllJobs(ctxReport)
 	if err != nil {
 		logger.Error("select all jobs", "error", err)
 		return fmt.Errorf("select all jobs: %w", err)

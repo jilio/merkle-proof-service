@@ -27,29 +27,39 @@ var (
 )
 
 type (
-	jobStorage struct {
-		db db.DB
+	StoreSetter interface {
+		Set(key, value []byte) error
+	}
+
+	StoreDeleter interface {
+		Delete(key []byte) error
+	}
+
+	JobStorage struct {
+		db.DB
+	}
+
+	// JobDescriptor uniquely determines a job. Speaking in RDBMS terms, each field is a part of a composite primary key.
+	JobDescriptor struct {
+		Address  common.Address `json:"address" yaml:"address"`   // Address of smart contract that emits events.
+		Contract Contract       `json:"contract" yaml:"contract"` // Contract determines contract's name to Indexer subscribes.
+
+		// First block to query for events.
+		// Usually it's a block number when the smart contract was deployed or the first event was emitted.
+		StartBlock uint64 `json:"start_block" yaml:"start_block"`
 	}
 
 	Job struct {
-		Address      common.Address
-		Contract     Contract
-		StartBlock   uint64
+		JobDescriptor
 		CurrentBlock uint64
-	}
-
-	DeleteJobParams struct {
-		Address    common.Address
-		Contract   Contract
-		StartBlock uint64
 	}
 )
 
-func NewJobStorage(db db.DB) JobStorage {
-	return &jobStorage{db: db}
+func NewJobStorage(db db.DB) *JobStorage {
+	return &JobStorage{db}
 }
 
-func (q *jobStorage) UpsertJob(_ context.Context, batch db.Batch, job Job) error {
+func (q *JobStorage) UpsertJob(_ context.Context, store StoreSetter, job Job) error {
 	var jobBytes []byte
 	enc := codec.NewEncoderBytes(&jobBytes, h)
 
@@ -57,21 +67,17 @@ func (q *jobStorage) UpsertJob(_ context.Context, batch db.Batch, job Job) error
 		return fmt.Errorf("serialize job: %w", err)
 	}
 
-	return batch.Set(makeJobKey(job), jobBytes)
+	return store.Set(makeJobKey(job.JobDescriptor), jobBytes)
 }
 
-func (q *jobStorage) DeleteJob(_ context.Context, batch db.Batch, arg DeleteJobParams) error {
-	return batch.Delete(makeJobKey(Job{
-		Address:    arg.Address,
-		Contract:   arg.Contract,
-		StartBlock: arg.StartBlock,
-	}))
+func (q *JobStorage) DeleteJob(_ context.Context, store StoreDeleter, jobDescriptor JobDescriptor) error {
+	return store.Delete(makeJobKey(jobDescriptor))
 }
 
-func (q *jobStorage) SelectAllJobs(ctx context.Context) ([]Job, error) {
+func (q *JobStorage) SelectAllJobs(ctx context.Context) ([]Job, error) {
 	var jobs []Job
 
-	iter, err := db.IteratePrefix(q.db, []byte{storage.JobKeyPrefix})
+	iter, err := db.IteratePrefix(q, []byte{storage.JobKeyPrefix})
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +105,7 @@ func (q *jobStorage) SelectAllJobs(ctx context.Context) ([]Job, error) {
 	return jobs, nil
 }
 
-func makeJobKey(job Job) []byte {
+func makeJobKey(job JobDescriptor) []byte {
 	key := make([]byte, 0, storageKeySize)
 	key = append(key, storage.JobKeyPrefix)
 	key = append(key, job.Address.Bytes()[0:common.AddressLength]...)
@@ -114,10 +120,11 @@ func (j *Job) String() string {
 	// address first 6 symbols and last 4 symbols:
 	address := j.Address.Hex()
 	return fmt.Sprintf(
-		"Job{Address: %s...%s, Contract: %s, StartBlock: %d}",
+		"Job{Address: %s...%s, Contract: %s, StartBlock: %d, CurrentBlock: %d}",
 		address[:6],
 		address[len(address)-4:],
 		j.Contract,
 		j.StartBlock,
+		j.CurrentBlock,
 	)
 }

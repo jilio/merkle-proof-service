@@ -25,7 +25,7 @@ import (
 )
 
 func TestSparseTree_NewEmptySparseTree(t *testing.T) {
-	treeStorage := NewSparseTreeStorage(db.NewMemDB())
+	treeStorage := NewSparseTreeStorage(db.NewMemDB(), 0)
 
 	sparseTree, err := NewSparseTree(32, EmptyLeafValue, treeStorage)
 	require.NoError(t, err)
@@ -38,11 +38,11 @@ func TestSparseTree_NewEmptySparseTree(t *testing.T) {
 }
 
 func TestSparseTree_InsertOneLeaf(t *testing.T) {
-	treeStorage := NewSparseTreeStorage(db.NewMemDB())
+	treeStorage := NewSparseTreeStorage(db.NewMemDB(), 0)
 	sparseTree, err := NewSparseTree(32, EmptyLeafValue, treeStorage)
 	require.NoError(t, err)
 
-	batch := NewBatchWithLeavesBuffer(treeStorage.NewBatch())
+	batch := treeStorage.NewBatch()
 	leaf := uint256.NewInt(42)
 	err = sparseTree.InsertLeaf(batch, 42, leaf)
 	require.NoError(t, err)
@@ -55,11 +55,11 @@ func TestSparseTree_InsertOneLeaf(t *testing.T) {
 }
 
 func TestSparseTree_InsertSomeLeaves(t *testing.T) {
-	treeStorage := NewSparseTreeStorage(db.NewMemDB())
+	treeStorage := NewSparseTreeStorage(db.NewMemDB(), 0)
 	sparseTree, err := NewSparseTree(32, EmptyLeafValue, treeStorage)
 	require.NoError(t, err)
 
-	batch := NewBatchWithLeavesBuffer(treeStorage.NewBatch())
+	batch := treeStorage.NewBatch()
 	require.NoError(t, sparseTree.InsertLeaf(batch, 42, uint256.NewInt(42)))
 	require.NoError(t, sparseTree.InsertLeaf(batch, 43, uint256.NewInt(43)))
 	require.NoError(t, sparseTree.InsertLeaf(batch, 44, uint256.NewInt(44)))
@@ -73,11 +73,12 @@ func TestSparseTree_InsertSomeLeaves(t *testing.T) {
 }
 
 func TestSparseTree_InsertSomeLeavesBatch(t *testing.T) {
-	treeStorage := NewSparseTreeStorage(db.NewMemDB())
+	treeStorage := NewSparseTreeStorage(db.NewMemDB(), 0)
+
 	sparseTree, err := NewSparseTree(32, EmptyLeafValue, treeStorage)
 	require.NoError(t, err)
 
-	batch := NewBatchWithLeavesBuffer(treeStorage.NewBatch())
+	batch := treeStorage.NewBatch()
 	require.NoError(t, sparseTree.InsertLeaves(
 		batch,
 		[]Leaf{
@@ -96,11 +97,11 @@ func TestSparseTree_InsertSomeLeavesBatch(t *testing.T) {
 }
 
 func TestSparseTree_CreateProof(t *testing.T) {
-	treeStorage := NewSparseTreeStorage(db.NewMemDB())
+	treeStorage := NewSparseTreeStorage(db.NewMemDB(), 0)
 	sparseTree, _ := NewSparseTree(32, EmptyLeafValue, treeStorage)
 
 	// insert Leaf:
-	batch := NewBatchWithLeavesBuffer(treeStorage.NewBatch())
+	batch := NewBatchWithLeavesBuffer(treeStorage.NewBatch(), 0)
 	require.NoError(t, sparseTree.InsertLeaf(batch, 42, uint256.NewInt(42)))
 	require.NoError(t, batch.WriteSync())
 

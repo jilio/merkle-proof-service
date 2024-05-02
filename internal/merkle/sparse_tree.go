@@ -20,6 +20,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"math/rand/v2"
+	"time"
 
 	"github.com/holiman/uint256"
 	"github.com/iden3/go-iden3-crypto/ff"
@@ -43,8 +45,8 @@ type (
 		GetLeaf(level uint8, index uint32) (*uint256.Int, error)
 	}
 
-	// LeavesBufferGetterSetter is an interface that allows to retrieve and set Leaf values in a buffer.
-	LeavesBufferGetterSetter interface {
+	// TreeLeafGetterSetter is an interface that allows to retrieve and set Leaf values.
+	TreeLeafGetterSetter interface {
 		TreeLeafGetter
 		SetLeaf(level uint8, index uint32, value *uint256.Int) error
 	}
@@ -107,56 +109,60 @@ func NewSparseTree(
 // The hash of parent nodes is calculated only once after all leaves have been inserted.
 // This function optimizes the process by only updating the branches of the tree that are affected by the newly inserted leaves.
 // This significantly reduces the number of hash calculations and improves performance.
-func (t *SparseTree) InsertLeaves(batch LeavesBufferGetterSetter, leaves []Leaf) error {
-	// Insert all leaves at once to the buffer.
+func (t *SparseTree) InsertLeaves(store TreeLeafGetterSetter, leaves []Leaf) error {
+	// Insert all leaves at once to the store.
 	for _, leaf := range leaves {
-		if err := batch.SetLeaf(0, leaf.Index, leaf.Value); err != nil {
+		if err := store.SetLeaf(0, leaf.Index, leaf.Value); err != nil {
 			return fmt.Errorf("set leaf: %w", err)
 		}
 	}
 
-	for i := uint8(0); i < t.depth; i++ {
-		updatedIndexes := make(map[uint32]struct{})
-		nextLevelLeaves := make([]Leaf, 0)
+	nextLevelLeaves := make([]Leaf, 0)
+	updatedIndexes := make(map[uint32]struct{})
 
+	for level := uint8(0); level < t.depth; level++ {
 		for _, leaf := range leaves {
-			parentIndex := leaf.Index / 2
-
-			if _, ok := updatedIndexes[parentIndex]; !ok {
-				nodeHash, err := t.calculateHashForNode(batch, i, leaf.Index)
-				if err != nil {
-					return fmt.Errorf("compute node hash: %w", err)
-				}
-
-				if err := batch.SetLeaf(i+1, parentIndex, nodeHash); err != nil {
-					return fmt.Errorf("set node: %w", err)
-				}
-				nextLevelLeaves = append(nextLevelLeaves, Leaf{Index: parentIndex, Value: nodeHash})
-				updatedIndexes[parentIndex] = struct{}{}
+			index := leaf.Index / 2
+			if _, ok := updatedIndexes[index]; ok {
+				continue
 			}
+
+			nodeHash, err := t.calculateHashForNode(store, level, leaf.Index)
+			if err != nil {
+				return fmt.Errorf("compute node hash: %w", err)
+			}
+
+			if err := store.SetLeaf(level+1, index, nodeHash); err != nil {
+				return fmt.Errorf("set node: %w", err)
+			}
+
+			nextLevelLeaves = append(nextLevelLeaves, Leaf{Index: index, Value: nodeHash})
+			updatedIndexes[index] = struct{}{}
 		}
 
 		leaves = nextLevelLeaves
+		nextLevelLeaves = nextLevelLeaves[:0]
+		updatedIndexes = make(map[uint32]struct{})
 	}
 
 	return nil
 }
 
 // InsertLeaf inserts a Leaf into the SparseTree at a specified index.
-func (t *SparseTree) InsertLeaf(batch LeavesBufferGetterSetter, index uint32, value *uint256.Int) error {
-	if err := batch.SetLeaf(0, index, value); err != nil {
+func (t *SparseTree) InsertLeaf(store TreeLeafGetterSetter, index uint32, value *uint256.Int) error {
+	if err := store.SetLeaf(0, index, value); err != nil {
 		return fmt.Errorf("set leaf: %w", err)
 	}
 
-	for i := uint8(0); i < t.depth; i++ {
-		nodeHash, err := t.calculateHashForNode(batch, i, index)
+	for level := uint8(0); level < t.depth; level++ {
+		nodeHash, err := t.calculateHashForNode(store, level, index)
 		if err != nil {
 			return fmt.Errorf("compute node hash: %w", err)
 		}
 
 		index = index / 2
 
-		if err := batch.SetLeaf(i+1, index, nodeHash); err != nil {
+		if err := store.SetLeaf(level+1, index, nodeHash); err != nil {
 			return fmt.Errorf("set node: %w", err)
 		}
 	}
@@ -173,17 +179,17 @@ func (t *SparseTree) CreateProof(index uint32) (*Proof, error) {
 	}
 
 	lastIndex := index
-	for i := uint8(0); i < t.depth; i++ {
+	for level := uint8(0); level < t.depth; level++ {
 		// check side we are on
 		if lastIndex%2 == 0 {
 			// if the index is even we are on the left and need to get the node from the right
-			pathElements[i], err = t.getLeafFromStorage(i, lastIndex+1)
+			pathElements[level], err = t.getLeafFromStorage(level, lastIndex+1)
 			if err != nil {
 				return nil, fmt.Errorf("retrieve right node: %w", err)
 			}
 		} else {
 			// if the index is odd we are on the right and need to get the node from the left
-			pathElements[i], err = t.getLeafFromStorage(i, lastIndex-1)
+			pathElements[level], err = t.getLeafFromStorage(level, lastIndex-1)
 			if err != nil {
 				return nil, fmt.Errorf("retrieve left node: %w", err)
 			}
@@ -211,10 +217,32 @@ func (t *SparseTree) GetRoot() (*uint256.Int, error) {
 	return t.getLeafFromStorage(t.depth, 0)
 }
 
+// GetRandomEmptyLeafIndex returns a random index of an empty Leaf.
+func (t *SparseTree) GetRandomEmptyLeafIndex() uint32 {
+	// TODO: think about a better way to generate an empty Leaf index
+	// TODO: for example, we can shift the generation to the beginning of the tree so that the tree takes up less space
+
+	// seed the random number generator
+	rnd := rand.New(uint256.NewInt(uint64(time.Now().UnixNano())))
+
+	maxIterations := 100 // limit the number of iterations to avoid infinite loop
+	for maxIterations > 0 {
+		index := rnd.Uint32() % (1 << uint32(t.depth)) // generate a random index, 0 <= index < 2 ** depth
+
+		// check if the value are empty in the tree then return the index
+		if _, err := t.storageLeafGetter.GetLeaf(0, index); errors.Is(err, ErrNotFound) {
+			return index
+		}
+		maxIterations--
+	}
+
+	return 0
+}
+
 // calculateHashForNode calculates the hash of the node at the specified level and index.
 // It retrieves the sibling nodes and calculates the hash of the node.
-func (t *SparseTree) calculateHashForNode(batch LeavesBufferGetterSetter, level uint8, index uint32) (*uint256.Int, error) {
-	leftNode, rightNode, err := t.getSiblingNodes(batch, level, index)
+func (t *SparseTree) calculateHashForNode(store TreeLeafGetterSetter, level uint8, index uint32) (*uint256.Int, error) {
+	leftNode, rightNode, err := t.getSiblingNodes(store, level, index)
 	if err != nil {
 		return nil, fmt.Errorf("get sibling nodes: %w", err)
 	}
@@ -224,7 +252,7 @@ func (t *SparseTree) calculateHashForNode(batch LeavesBufferGetterSetter, level 
 
 // getSiblingNodes returns the left and right sibling nodes of the node at the specified index and level.
 // If the sibling nodes are not found in the batch, they are retrieved from the storage.
-func (t *SparseTree) getSiblingNodes(batch LeavesBufferGetterSetter, level uint8, index uint32) (leftNode, rightNode *uint256.Int, err error) {
+func (t *SparseTree) getSiblingNodes(batch TreeLeafGetterSetter, level uint8, index uint32) (leftNode, rightNode *uint256.Int, err error) {
 	leftNodeIndex, rightNodeIndex := index, index+1
 	if index%2 != 0 {
 		leftNodeIndex, rightNodeIndex = index-1, index
@@ -240,7 +268,7 @@ func (t *SparseTree) getSiblingNodes(batch LeavesBufferGetterSetter, level uint8
 }
 
 // getLeafFromBatchOrStorage retrieves a node from the batch and if not found, from the storage.
-func (t *SparseTree) getLeafFromBatchOrStorage(batch LeavesBufferGetterSetter, level uint8, nodeIndex uint32, nodeType string) (*uint256.Int, error) {
+func (t *SparseTree) getLeafFromBatchOrStorage(batch TreeLeafGetterSetter, level uint8, nodeIndex uint32, nodeType string) (*uint256.Int, error) {
 	node, err := batch.GetLeaf(level, nodeIndex)
 	if errors.Is(err, ErrNotFound) {
 		node, err = t.getLeafFromStorage(level, nodeIndex)

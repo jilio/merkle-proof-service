@@ -25,9 +25,9 @@ import (
 )
 
 func TestSparseTreeStorage_SetLeafValue(t *testing.T) {
-	storage := NewSparseTreeStorage(db.NewMemDB())
+	storage := NewSparseTreeStorage(db.NewMemDB(), 0)
 
-	batch := NewBatchWithLeavesBuffer(storage.NewBatch())
+	batch := storage.NewBatch()
 	leafValue := uint256.NewInt(42)
 	err := batch.SetLeaf(0, 0, leafValue)
 	require.NoError(t, err)
@@ -41,9 +41,9 @@ func TestSparseTreeStorage_SetLeafValue(t *testing.T) {
 }
 
 func TestSparseTreeStorage_SetLeaves(t *testing.T) {
-	storage := NewSparseTreeStorage(db.NewMemDB())
+	storage := NewSparseTreeStorage(db.NewMemDB(), 0)
 
-	batch := NewBatchWithLeavesBuffer(storage.NewBatch())
+	batch := storage.NewBatch()
 	leafValue := uint256.NewInt(42)
 	err := batch.SetLeaf(0, 0, leafValue)
 	require.NoError(t, err)

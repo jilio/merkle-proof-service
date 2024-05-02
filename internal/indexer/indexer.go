@@ -1,3 +1,19 @@
+/*
+ * Copyright 2024 Galactica Network
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package indexer
 
 import (
@@ -6,6 +22,7 @@ import (
 	"math/big"
 	"time"
 
+	db "github.com/cometbft/cometbft-db"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -14,6 +31,7 @@ import (
 const (
 	sinkSize          = 100
 	maxBlocksDistance = 10000
+	sinkProgressTick  = 5 * time.Second
 )
 
 type (
@@ -22,37 +40,29 @@ type (
 		ethereum.LogFilterer
 	}
 
-	EVMIndexer interface {
-		IndexEVMLogs(
-			ctx context.Context,
-			query ethereum.FilterQuery,
-			startBlock uint64,
-			handlers Handlers,
-		) error
+	DBBatchCreator interface {
+		NewBatch() db.Batch
 	}
 
-	// evmIndexer indexes events by subscribing to new and filtering historical events using EthereumClient.
-	evmIndexer struct {
-		client EthereumClient
-		logger log.Logger
+	// Indexer indexes events by subscribing to new and filtering historical events using EthereumClient.
+	Indexer struct {
+		client       EthereumClient
+		batchCreator DBBatchCreator
+		logger       log.Logger
 	}
 )
 
-func NewEVMIndexer(client EthereumClient, logger log.Logger) EVMIndexer {
-	return &evmIndexer{
-		client: client,
-		logger: logger,
+func NewEVMIndexer(client EthereumClient, batchCreator DBBatchCreator, logger log.Logger) *Indexer {
+	return &Indexer{
+		client:       client,
+		batchCreator: batchCreator,
+		logger:       logger,
 	}
 }
 
 // IndexEVMLogs indexed events logs using the provided query from the provided start block.
 // Because of subscription, it blocks forever unless the context will be cancelled or some error will arise.
-func (ixr *evmIndexer) IndexEVMLogs(
-	ctx context.Context,
-	query ethereum.FilterQuery,
-	startBlock uint64,
-	handlers Handlers,
-) error {
+func (ixr *Indexer) IndexEVMLogs(ctx context.Context, query ethereum.FilterQuery, startBlock uint64, handler JobHandler) error {
 	currentBlock, err := ixr.client.BlockNumber(ctx)
 	if err != nil {
 		return fmt.Errorf("get current block number: %w", err)
@@ -64,7 +74,19 @@ func (ixr *evmIndexer) IndexEVMLogs(
 
 	fromBlock := startBlock
 	sink := make(chan types.Log, sinkSize)
+	defer close(sink)
+
 	subscriptionStarted := false
+	startSubscription := func(ctx context.Context, query ethereum.FilterQuery, sink chan<- types.Log) bool {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+
+		query.FromBlock = new(big.Int).SetUint64(fromBlock)
+		query.ToBlock = nil
+
+		go ixr.subscribeToEvents(ctx, cancel, query, sink)
+		return true
+	}
 
 	for fromBlock <= currentBlock {
 		toBlock := min(fromBlock+maxBlocksDistance-1, currentBlock)
@@ -76,46 +98,45 @@ func (ixr *evmIndexer) IndexEVMLogs(
 			return fmt.Errorf("filter logs: %w", err)
 		}
 
-		if err := ixr.handleLogs(ctx, logs, toBlock, handlers); err != nil {
+		if err := ixr.handleLogs(ctx, logs, toBlock, handler); err != nil {
 			return fmt.Errorf("handle logs: %w", err)
 		}
 
 		fromBlock = toBlock + 1
 
-		select {
-		case <-ctx.Done():
-			return context.Cause(ctx)
-		default:
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
 
 		// start subscription when we are close to the current block
 		// we need to start subscription in the cycle to avoid missing logs because
 		// ethereum.FilterQuery.ToBlock is ignored by the server
 		if !subscriptionStarted && currentBlock-fromBlock <= maxBlocksDistance {
-			var cancel context.CancelCauseFunc
-			ctx, cancel = context.WithCancelCause(ctx)
-			query.FromBlock = new(big.Int).SetUint64(fromBlock)
-			query.ToBlock = nil
-			go ixr.subscribeToEvents(ctx, cancel, query, sink)
-			subscriptionStarted = true
+			subscriptionStarted = startSubscription(ctx, query, sink)
 		}
 	}
 
 	if !subscriptionStarted {
-		var cancel context.CancelCauseFunc
-		ctx, cancel = context.WithCancelCause(ctx)
-		query.FromBlock = new(big.Int).SetUint64(fromBlock)
-		query.ToBlock = nil
-		go ixr.subscribeToEvents(ctx, cancel, query, sink)
+		startSubscription(ctx, query, sink)
 	}
 
-	ticker := time.NewTicker(5 * time.Second)
+	return ixr.runSinkIndexation(ctx, sink, fromBlock, handler)
+}
+
+// runSinkIndexation runs sink indexation for the provided query and start block.
+// It blocks forever unless the context will be cancelled or some error will arise.
+func (ixr *Indexer) runSinkIndexation(
+	ctx context.Context,
+	sink <-chan types.Log,
+	fromBlock uint64,
+	handler JobHandler,
+) error {
+	ticker := time.NewTicker(sinkProgressTick)
 
 	for {
 		select {
 		case <-ctx.Done():
 			ixr.logger.Info("sink indexation cancelled")
-			close(sink)
 			return context.Cause(ctx)
 
 		case <-ticker.C:
@@ -139,7 +160,7 @@ func (ixr *evmIndexer) IndexEVMLogs(
 			logs = append([]types.Log{eventLog}, logs...)
 			progressBlock := logs[len(logs)-1].BlockNumber
 
-			// keep only logs that newer than fromBlock
+			// keep only logs that are greater or equal to the start block
 			logsToProcess := make([]types.Log, 0, len(logs))
 			for _, eventLog := range logs {
 				if eventLog.BlockNumber >= fromBlock {
@@ -147,37 +168,47 @@ func (ixr *evmIndexer) IndexEVMLogs(
 				}
 			}
 
-			if err := ixr.handleLogs(ctx, logsToProcess, progressBlock, handlers); err != nil {
+			if err := ixr.handleLogs(ctx, logsToProcess, progressBlock, handler); err != nil {
 				return fmt.Errorf("handle logs: %w", err)
 			}
 		}
 	}
 }
-func (ixr *evmIndexer) handleLogs(
+
+// handleLogs handles logs and progress block using the provided handlers.
+func (ixr *Indexer) handleLogs(
 	ctx context.Context,
 	logs []types.Log,
 	progressBlock uint64,
-	handlers Handlers,
+	handler JobHandler,
 ) error {
-	storageCtx, err := handlers.PrepareContext(ctx)
+	storageCtx, err := handler.PrepareContext(ctx)
 	if err != nil {
 		return fmt.Errorf("prepare context: %w", err)
 	}
 
 	for _, eventLog := range logs {
-		if err := handlers.HandleEVMLog(storageCtx, eventLog); err != nil {
+		if err := handler.HandleEVMLog(storageCtx, eventLog); err != nil {
 			return fmt.Errorf("handle event: %w", err)
 		}
 	}
 
-	if err := handlers.HandleProgress(storageCtx, progressBlock); err != nil {
-		return fmt.Errorf("handle progress: %w", err)
+	batch := ixr.batchCreator.NewBatch()
+	defer func() {
+		if err := batch.Close(); err != nil {
+			ixr.logger.Error("handle logs: close batch", "error", err)
+		}
+	}()
+
+	if err := handler.Commit(storageCtx, batch, progressBlock); err != nil {
+		return fmt.Errorf("job commit: %w", err)
 	}
 
 	return nil
 }
 
-func (ixr *evmIndexer) subscribeToEvents(
+// subscribeToEvents subscribes to new logs using the provided query and sink.
+func (ixr *Indexer) subscribeToEvents(
 	ctx context.Context,
 	cancel context.CancelCauseFunc,
 	query ethereum.FilterQuery,
@@ -210,7 +241,8 @@ func (ixr *evmIndexer) subscribeToEvents(
 	}
 }
 
-func (ixr *evmIndexer) readUntilEmpty(ctx context.Context, sink <-chan types.Log) ([]types.Log, error) {
+// readUntilEmpty reads logs from the sink until it's empty.
+func (ixr *Indexer) readUntilEmpty(ctx context.Context, sink <-chan types.Log) ([]types.Log, error) {
 	var logs []types.Log
 	for {
 		select {

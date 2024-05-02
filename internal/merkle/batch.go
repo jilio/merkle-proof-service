@@ -27,16 +27,18 @@ type (
 	// BatchWithLeavesBuffer is a wrapper around db.Batch that allows reading leaf nodes from the buffer.
 	BatchWithLeavesBuffer struct {
 		db.Batch
-		buffer map[[keySize]byte]*uint256.Int
-		mu     sync.RWMutex
+		contractIndex TreeAddressIndex
+		buffer        map[[keySize]byte]*uint256.Int
+		mu            sync.RWMutex
 	}
 )
 
-func NewBatchWithLeavesBuffer(batch db.Batch) *BatchWithLeavesBuffer {
+func NewBatchWithLeavesBuffer(batch db.Batch, contractIndex TreeAddressIndex) *BatchWithLeavesBuffer {
 	return &BatchWithLeavesBuffer{
-		Batch:  batch,
-		buffer: make(map[[keySize]byte]*uint256.Int),
-		mu:     sync.RWMutex{},
+		Batch:         batch,
+		contractIndex: contractIndex,
+		buffer:        make(map[[keySize]byte]*uint256.Int),
+		mu:            sync.RWMutex{},
 	}
 }
 
@@ -44,7 +46,7 @@ func NewBatchWithLeavesBuffer(batch db.Batch) *BatchWithLeavesBuffer {
 // The value is not written to the database until the batch is committed.
 // Call batch.Write() or batch.WriteSync() to write the changes to the database.
 func (b *BatchWithLeavesBuffer) SetLeaf(level uint8, index uint32, value *uint256.Int) error {
-	key := makeLeafKey(level, index)
+	key := makeLeafKey(b.contractIndex, level, index)
 
 	b.mu.Lock()
 	b.buffer[[keySize]byte(key[:keySize])] = value
@@ -56,7 +58,7 @@ func (b *BatchWithLeavesBuffer) SetLeaf(level uint8, index uint32, value *uint25
 // GetLeaf reads the leaf node at the given level and index from the buffer.
 // If the leaf node is not found in the buffer, it is returned an error ErrNotFound.
 func (b *BatchWithLeavesBuffer) GetLeaf(level uint8, index uint32) (*uint256.Int, error) {
-	key := makeLeafKey(level, index)
+	key := makeLeafKey(b.contractIndex, level, index)
 
 	b.mu.RLock()
 	value, ok := b.buffer[[keySize]byte(key[:keySize])]

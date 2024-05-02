@@ -19,4 +19,7 @@ package storage
 var (
 	JobKeyPrefix        = byte(0x00)
 	MerkleTreeKeyPrefix = byte(0x01)
+
+	MerkleTreeAddressIndexPrefix        = byte(0x02)
+	MerkleTreeAddressIndexCounterPrefix = byte(0x03)
 )

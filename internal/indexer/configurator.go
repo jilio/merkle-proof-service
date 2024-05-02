@@ -8,50 +8,26 @@ import (
 	db "github.com/cometbft/cometbft-db"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/common"
 	"golang.org/x/sync/errgroup"
-
-	"github.com/Galactica-corp/merkle-proof-service/internal/merkle"
-	"github.com/Galactica-corp/merkle-proof-service/internal/storage"
 )
 
 type (
-	JobStorage interface {
-		DeleteJob(ctx context.Context, batch db.Batch, arg DeleteJobParams) error
-		SelectAllJobs(ctx context.Context) ([]Job, error)
-		UpsertJob(ctx context.Context, batch db.Batch, arg Job) error
+	JobHandlersProducer interface {
+		Produce(jobDescriptor JobDescriptor) (JobHandler, error)
 	}
 
-	EventHandlerProducer interface {
-		ForContract(contract Contract, contractAddress common.Address) (ethereum.FilterQuery, EVMLogHandler, error)
+	EVMIndexer interface {
+		IndexEVMLogs(ctx context.Context, query ethereum.FilterQuery, startBlock uint64, handler JobHandler) error
 	}
 
-	DBBatchCreator interface {
-		NewBatch() db.Batch
-	}
-)
-
-type (
-	// Configurator manages set of currently active EVMIndexer jobs. It allows to dynamically start and stop new jobs.
+	// Configurator manages set of currently active EVMLogsIndexer jobs. It allows to dynamically start and stop new jobs.
 	Configurator struct {
-		eventHandlerProducer EventHandlerProducer
-		indexer              EVMIndexer
-		logger               log.Logger
+		jobHandlersProducer JobHandlersProducer
+		indexer             EVMIndexer
+		logger              log.Logger
 
-		jobStorage JobStorage
+		jobStorage *JobStorage
 		jobs       map[JobDescriptor]JobContext
-
-		dbBatchCreator DBBatchCreator
-	}
-
-	// JobDescriptor uniquely determines a job. Speaking in RDBMS terms, each field is a part of a composite primary key.
-	JobDescriptor struct {
-		Address  common.Address `json:"address" yaml:"address"`   // Address of smart contract that emits events.
-		Contract Contract       `json:"contract" yaml:"contract"` // Contract determines contract's name to Indexer subscribes.
-
-		// First block to query for events.
-		// Usually it's a block number when the smart contract was deployed or the first event was emitted.
-		StartBlock uint64 `json:"start_block" yaml:"start_block"`
 	}
 
 	// JobContext holds an execution context of a single job.
@@ -62,19 +38,17 @@ type (
 )
 
 func NewConfigurator(
-	eventHandlerProducer EventHandlerProducer,
+	jobHandlersProducer JobHandlersProducer,
 	indexer EVMIndexer,
 	logger log.Logger,
-	jobStorage JobStorage,
-	dbBatchCreator DBBatchCreator,
+	jobStorage *JobStorage,
 ) *Configurator {
 	return &Configurator{
-		eventHandlerProducer: eventHandlerProducer,
-		indexer:              indexer,
-		logger:               logger,
-		jobStorage:           jobStorage,
-		jobs:                 map[JobDescriptor]JobContext{},
-		dbBatchCreator:       dbBatchCreator,
+		jobHandlersProducer: jobHandlersProducer,
+		indexer:             indexer,
+		logger:              logger,
+		jobStorage:          jobStorage,
+		jobs:                map[JobDescriptor]JobContext{},
 	}
 }
 
@@ -82,13 +56,12 @@ func NewConfigurator(
 // JobStorage provides a list of jobs and their corresponding last known blocks.
 func InitConfiguratorFromStorage(
 	ctx context.Context,
-	eventHandlerProducer EventHandlerProducer,
-	indexer EVMIndexer,
+	jobStorage *JobStorage,
+	jobHandlersProducer JobHandlersProducer,
+	evmIndexer EVMIndexer,
 	logger log.Logger,
-	jobStorage JobStorage,
-	batchCreator DBBatchCreator,
 ) (*Configurator, error) {
-	c := NewConfigurator(eventHandlerProducer, indexer, logger, jobStorage, batchCreator)
+	c := NewConfigurator(jobHandlersProducer, evmIndexer, logger, jobStorage)
 
 	jobs, err := jobStorage.SelectAllJobs(ctx)
 	if err != nil {
@@ -111,37 +84,38 @@ func InitConfiguratorFromStorage(
 // StartJob starts new job for the indexer.
 // Additionally, it's responsible for saving progress (last known block) of this job, so it can resume paused job later.
 func (c *Configurator) StartJob(ctx context.Context, jobDescriptor JobDescriptor, startBlock uint64) error {
-	query, evmLogHandler, err := c.eventHandlerProducer.ForContract(jobDescriptor.Contract, jobDescriptor.Address)
+	jobHandler, err := c.jobHandlersProducer.Produce(jobDescriptor)
 	if err != nil {
 		return fmt.Errorf("create event handler: %w", err)
 	}
 
-	handlers := NewEVMHandlers(
-		func(ctx context.Context) (storage.Context, error) {
-			return storage.NewContext(
-				ctx,
-				merkle.NewBatchWithLeavesBuffer(c.dbBatchCreator.NewBatch()),
-			), nil
-		},
+	filterQuery, err := jobHandler.FilterQuery()
+	if err != nil {
+		return fmt.Errorf("get job filter query: %w", err)
+	}
 
-		func(ctx storage.Context, block uint64) error {
-			defer func() {
-				if err := ctx.Batch().Close(); err != nil {
-					c.logger.Error("write batch to storage", "error", err)
-				}
-			}()
+	handlers := NewEVMJob(
+		jobHandler.PrepareContext,
+		jobHandler.HandleEVMLog,
 
-			if err := c.jobStorage.UpsertJob(ctx, ctx.Batch(), Job{
-				Address:      jobDescriptor.Address,
-				Contract:     jobDescriptor.Contract,
-				StartBlock:   jobDescriptor.StartBlock,
-				CurrentBlock: block,
+		// Commit function that saves progress (last known block) of the job.
+		func(ctx context.Context, batch db.Batch, block uint64) error {
+			// TODO: create a mutex rw for the tree, which is unlocked after the write is synchronized
+			// TODO: We need this because users are reading the tree in parts while we are writing it.
+			// TODO: And it is possible to read incorrect data.
+
+			if err := jobHandler.Commit(ctx, batch, block); err != nil {
+				return fmt.Errorf("commit job: %w", err)
+			}
+
+			if err := c.jobStorage.UpsertJob(ctx, batch, Job{
+				JobDescriptor: jobDescriptor,
+				CurrentBlock:  block,
 			}); err != nil {
 				return fmt.Errorf("update job's current startBlock: %w", err)
 			}
 
-			// Write batch to storage to save progress and all other changes.
-			if err := ctx.Batch().WriteSync(); err != nil {
+			if err := batch.WriteSync(); err != nil {
 				return fmt.Errorf("write batch to storage: %w", err)
 			}
 
@@ -150,7 +124,7 @@ func (c *Configurator) StartJob(ctx context.Context, jobDescriptor JobDescriptor
 			return nil
 		},
 
-		evmLogHandler,
+		jobHandler.FilterQuery,
 	)
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -163,7 +137,7 @@ func (c *Configurator) StartJob(ctx context.Context, jobDescriptor JobDescriptor
 
 	wg.Go(func() error {
 		c.logger.Info("start job", "job", jobDescriptor.String(), "from block", startBlock)
-		return c.indexer.IndexEVMLogs(ctx, query, startBlock, handlers)
+		return c.indexer.IndexEVMLogs(ctx, filterQuery, startBlock, handlers)
 	})
 
 	return nil
@@ -171,11 +145,11 @@ func (c *Configurator) StartJob(ctx context.Context, jobDescriptor JobDescriptor
 
 // StopJob cancels execution of the specified job.
 // It also removes progress (last known block) from the storage, so the job wouldn't resume after restart.
-func (c *Configurator) StopJob(ctx context.Context, batch db.Batch, job JobDescriptor) error {
+func (c *Configurator) StopJob(ctx context.Context, store db.Batch, job JobDescriptor) error {
 	jobContext := c.jobs[job]
 	delete(c.jobs, job)
 
-	if err := c.jobStorage.DeleteJob(ctx, batch, DeleteJobParams(job)); err != nil {
+	if err := c.jobStorage.DeleteJob(ctx, store, job); err != nil {
 		return fmt.Errorf("delete job from storage: %w", err)
 	}
 
@@ -193,13 +167,6 @@ func (c *Configurator) StopJob(ctx context.Context, batch db.Batch, job JobDescr
 func (c *Configurator) ReloadConfig(ctx context.Context, config []JobDescriptor) error {
 	configMap := map[JobDescriptor]struct{}{}
 
-	batch := c.dbBatchCreator.NewBatch()
-	defer func() {
-		if err := batch.Close(); err != nil {
-			c.logger.Error("close batch while reloading config", "error", err)
-		}
-	}()
-
 	for _, job := range config {
 		configMap[job] = struct{}{}
 
@@ -209,6 +176,13 @@ func (c *Configurator) ReloadConfig(ctx context.Context, config []JobDescriptor)
 			}
 		}
 	}
+
+	batch := c.jobStorage.NewBatch()
+	defer func() {
+		if err := batch.Close(); err != nil {
+			c.logger.Error("reload config: close batch", "error", err)
+		}
+	}()
 
 	for job := range c.jobs {
 		if _, ok := configMap[job]; !ok {
@@ -220,9 +194,8 @@ func (c *Configurator) ReloadConfig(ctx context.Context, config []JobDescriptor)
 		}
 	}
 
-	// Write batch to storage to save progress and all other changes.
 	if err := batch.WriteSync(); err != nil {
-		return fmt.Errorf("write batch to storage while reloading config: %w", err)
+		return fmt.Errorf("write batch to storage: %w", err)
 	}
 
 	return nil
