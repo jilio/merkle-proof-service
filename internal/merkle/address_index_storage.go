@@ -33,7 +33,7 @@ const (
 
 type (
 	// AddressIndexStorage is a storage for the address index.
-	// It is stores the address index for the given address.
+	// It is stores the address index for the given registry address.
 	// structure:
 	//  MerkleTreeAddressIndexPrefix -> address -> index
 	//  MerkleTreeAddressIndexCounterPrefix -> index counter

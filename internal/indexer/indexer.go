@@ -22,7 +22,6 @@ import (
 	"math/big"
 	"time"
 
-	db "github.com/cometbft/cometbft-db"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -40,23 +39,17 @@ type (
 		ethereum.LogFilterer
 	}
 
-	DBBatchCreator interface {
-		NewBatch() db.Batch
-	}
-
 	// Indexer indexes events by subscribing to new and filtering historical events using EthereumClient.
 	Indexer struct {
-		client       EthereumClient
-		batchCreator DBBatchCreator
-		logger       log.Logger
+		client EthereumClient
+		logger log.Logger
 	}
 )
 
-func NewEVMIndexer(client EthereumClient, batchCreator DBBatchCreator, logger log.Logger) *Indexer {
+func NewEVMIndexer(client EthereumClient, logger log.Logger) *Indexer {
 	return &Indexer{
-		client:       client,
-		batchCreator: batchCreator,
-		logger:       logger,
+		client: client,
+		logger: logger,
 	}
 }
 
@@ -193,14 +186,7 @@ func (ixr *Indexer) handleLogs(
 		}
 	}
 
-	batch := ixr.batchCreator.NewBatch()
-	defer func() {
-		if err := batch.Close(); err != nil {
-			ixr.logger.Error("handle logs: close batch", "error", err)
-		}
-	}()
-
-	if err := handler.Commit(storageCtx, batch, progressBlock); err != nil {
+	if err := handler.Commit(storageCtx, progressBlock); err != nil {
 		return fmt.Errorf("job commit: %w", err)
 	}
 

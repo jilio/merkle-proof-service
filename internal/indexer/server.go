@@ -69,7 +69,13 @@ func StartServer(ctx context.Context, evmRpc string, dbPath string, jobs []JobDe
 		addressIndexStorage,
 	)
 
+	// Apply all KYC Registry addresses to the index
 	for _, job := range jobs {
+		if job.Contract != ContractKYCRecordRegistry {
+			// apply only for KYCRecordRegistry
+			continue
+		}
+
 		if _, err := addressIndexStorage.ApplyAddressToIndex(job.Address); err != nil {
 			logger.Error("get tree for address", "error", err)
 			return fmt.Errorf("get tree for address: %w", err)
@@ -77,8 +83,8 @@ func StartServer(ctx context.Context, evmRpc string, dbPath string, jobs []JobDe
 	}
 
 	jobStorage := NewJobStorage(merkleDB)
-	evmIndexer := NewEVMIndexer(ethereumClient, merkleDB, logger)
-	jobFactory := NewJobFactory(ethereumClient, treeFactory, logger)
+	evmIndexer := NewEVMIndexer(ethereumClient, logger)
+	jobFactory := NewJobFactory(ethereumClient, treeFactory, jobStorage, merkleDB, logger)
 	configurator, err := InitConfiguratorFromStorage(ctx, jobStorage, jobFactory, evmIndexer, logger)
 	if err != nil {
 		return fmt.Errorf("init configurator: %w", err)
@@ -88,7 +94,7 @@ func StartServer(ctx context.Context, evmRpc string, dbPath string, jobs []JobDe
 		return fmt.Errorf("start job: %w", err)
 	}
 
-	<-ctx.Done()
+	<-configurator.Wait()
 	logger.Info("shutting down indexer server")
 
 	// close the connection

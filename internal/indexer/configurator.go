@@ -38,16 +38,16 @@ type (
 )
 
 func NewConfigurator(
+	jobStorage *JobStorage,
 	jobHandlersProducer JobHandlersProducer,
 	indexer EVMIndexer,
 	logger log.Logger,
-	jobStorage *JobStorage,
 ) *Configurator {
 	return &Configurator{
+		jobStorage:          jobStorage,
 		jobHandlersProducer: jobHandlersProducer,
 		indexer:             indexer,
 		logger:              logger,
-		jobStorage:          jobStorage,
 		jobs:                map[JobDescriptor]JobContext{},
 	}
 }
@@ -61,7 +61,7 @@ func InitConfiguratorFromStorage(
 	evmIndexer EVMIndexer,
 	logger log.Logger,
 ) (*Configurator, error) {
-	c := NewConfigurator(jobHandlersProducer, evmIndexer, logger, jobStorage)
+	c := NewConfigurator(jobStorage, jobHandlersProducer, evmIndexer, logger)
 
 	jobs, err := jobStorage.SelectAllJobs(ctx)
 	if err != nil {
@@ -94,39 +94,6 @@ func (c *Configurator) StartJob(ctx context.Context, jobDescriptor JobDescriptor
 		return fmt.Errorf("get job filter query: %w", err)
 	}
 
-	handlers := NewEVMJob(
-		jobHandler.PrepareContext,
-		jobHandler.HandleEVMLog,
-
-		// Commit function that saves progress (last known block) of the job.
-		func(ctx context.Context, batch db.Batch, block uint64) error {
-			// TODO: create a mutex rw for the tree, which is unlocked after the write is synchronized
-			// TODO: We need this because users are reading the tree in parts while we are writing it.
-			// TODO: And it is possible to read incorrect data.
-
-			if err := jobHandler.Commit(ctx, batch, block); err != nil {
-				return fmt.Errorf("commit job: %w", err)
-			}
-
-			if err := c.jobStorage.UpsertJob(ctx, batch, Job{
-				JobDescriptor: jobDescriptor,
-				CurrentBlock:  block,
-			}); err != nil {
-				return fmt.Errorf("update job's current startBlock: %w", err)
-			}
-
-			if err := batch.WriteSync(); err != nil {
-				return fmt.Errorf("write batch to storage: %w", err)
-			}
-
-			c.logger.Info("job progress", "job", jobDescriptor.String(), "block", block)
-
-			return nil
-		},
-
-		jobHandler.FilterQuery,
-	)
-
 	ctx, cancel := context.WithCancel(ctx)
 	wg, ctx := errgroup.WithContext(ctx)
 
@@ -137,7 +104,7 @@ func (c *Configurator) StartJob(ctx context.Context, jobDescriptor JobDescriptor
 
 	wg.Go(func() error {
 		c.logger.Info("start job", "job", jobDescriptor.String(), "from block", startBlock)
-		return c.indexer.IndexEVMLogs(ctx, filterQuery, startBlock, handlers)
+		return c.indexer.IndexEVMLogs(ctx, filterQuery, startBlock, jobHandler)
 	})
 
 	return nil
@@ -199,6 +166,21 @@ func (c *Configurator) ReloadConfig(ctx context.Context, config []JobDescriptor)
 	}
 
 	return nil
+}
+
+func (c *Configurator) Wait() chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+
+		for _, job := range c.jobs {
+			if err := job.WG.Wait(); err != nil && !errors.Is(err, context.Canceled) {
+				c.logger.Error("wait for job", "error", err)
+			}
+		}
+	}()
+
+	return done
 }
 
 // String returns a string representation of the Job.

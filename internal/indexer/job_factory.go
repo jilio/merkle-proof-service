@@ -34,7 +34,7 @@ type (
 	JobHandler interface {
 		PrepareContext(ctx context.Context) (context.Context, error)
 		HandleEVMLog(ctx context.Context, log types.Log) error
-		Commit(ctx context.Context, batch db.Batch, block uint64) error
+		Commit(ctx context.Context, block uint64) error
 		FilterQuery() (ethereum.FilterQuery, error)
 	}
 
@@ -43,23 +43,37 @@ type (
 		FindAddressIndex(address common.Address) (merkle.TreeAddressIndex, error)
 	}
 
+	DBBatchCreator interface {
+		NewBatch() db.Batch
+	}
+
+	JobUpdater interface {
+		UpsertJob(_ context.Context, store StoreSetter, job Job) error
+	}
+
 	// JobFactory is a factory that produces event handlers based on provided contract.
 	JobFactory struct {
-		client      bind.ContractFilterer
-		treeFactory TreeFactory
-		logger      log.Logger
+		client       bind.ContractFilterer
+		treeFactory  TreeFactory
+		jobUpdater   JobUpdater
+		batchCreator DBBatchCreator
+		logger       log.Logger
 	}
 )
 
 func NewJobFactory(
 	client bind.ContractFilterer,
 	merkleTree TreeFactory,
+	jobUpdater JobUpdater,
+	batchCreator DBBatchCreator,
 	logger log.Logger,
 ) *JobFactory {
 	return &JobFactory{
-		client:      client,
-		treeFactory: merkleTree,
-		logger:      logger,
+		client:       client,
+		treeFactory:  merkleTree,
+		jobUpdater:   jobUpdater,
+		batchCreator: batchCreator,
+		logger:       logger,
 	}
 }
 
@@ -76,7 +90,13 @@ func (f *JobFactory) Produce(jobDescriptor JobDescriptor) (JobHandler, error) {
 		if err != nil {
 			return nil, fmt.Errorf("get merkle tree for address %s: %w", jobDescriptor.Address.String(), err)
 		}
-		return NewKYCRecordRegistryJob(jobDescriptor, tree, addressIndex, f.logger), nil
+		return NewKYCRecordRegistryJob(
+			JobDescriptorWithAddressIndex{jobDescriptor, addressIndex},
+			f.jobUpdater,
+			tree,
+			f.batchCreator,
+			f.logger,
+		), nil
 
 	default:
 		return nil, fmt.Errorf("unknown contract: %s", jobDescriptor.Contract)

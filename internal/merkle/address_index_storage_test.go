@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestStorageFactory_GetStorageForAddress(t *testing.T) {
+func TestAddressIndexStorage_GetStorageForAddress(t *testing.T) {
 	factory := NewAddressIndexStorage(db.NewMemDB())
 	address := common.HexToAddress("0x1234567890123456789012345678901234567890")
 
@@ -36,7 +36,7 @@ func TestStorageFactory_GetStorageForAddress(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestStorageFactory_SetAddressIndex(t *testing.T) {
+func TestAddressIndexStorage_SetAddressIndex(t *testing.T) {
 	factory := NewAddressIndexStorage(db.NewMemDB())
 	address := common.HexToAddress("0x1234567890123456789012345678901234567890")
 
@@ -56,6 +56,7 @@ func TestStorageFactory_SetAddressIndex(t *testing.T) {
 	err = factory.setAddressIndex(batch, address2, 0)
 	require.NoError(t, err)
 	err = batch.WriteSync()
+	require.NoError(t, err)
 
 	// find the address index
 	index, err := factory.FindAddressIndex(address)
@@ -67,7 +68,7 @@ func TestStorageFactory_SetAddressIndex(t *testing.T) {
 	require.Equal(t, TreeAddressIndex(0), index2)
 }
 
-func TestStorageFactory_GetNextAddressIndex(t *testing.T) {
+func TestAddressIndexStorage_GetNextAddressIndex(t *testing.T) {
 	factory := NewAddressIndexStorage(db.NewMemDB())
 
 	index, err := factory.getNextAddressIndex()
@@ -79,6 +80,7 @@ func TestStorageFactory_GetNextAddressIndex(t *testing.T) {
 	err = factory.setIndexCounter(batch, 0)
 	require.NoError(t, err)
 	err = batch.WriteSync()
+	require.NoError(t, err)
 
 	index, err = factory.getNextAddressIndex()
 	require.NoError(t, err)
@@ -89,13 +91,14 @@ func TestStorageFactory_GetNextAddressIndex(t *testing.T) {
 	err = factory.setIndexCounter(batch, 1)
 	require.NoError(t, err)
 	err = batch.WriteSync()
+	require.NoError(t, err)
 
 	index, err = factory.getNextAddressIndex()
 	require.NoError(t, err)
 	require.Equal(t, TreeAddressIndex(2), index)
 }
 
-func TestStorageFactory_SetIndexCounter(t *testing.T) {
+func TestAddressIndexStorage_SetIndexCounter(t *testing.T) {
 	factory := NewAddressIndexStorage(db.NewMemDB())
 
 	batch := factory.database.NewBatch()
@@ -112,7 +115,7 @@ func TestStorageFactory_SetIndexCounter(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestStorageFactory_ApplyAddressToIndex(t *testing.T) {
+func TestAddressIndexStorage_ApplyAddressToIndex(t *testing.T) {
 	factory := NewAddressIndexStorage(db.NewMemDB())
 	address := common.HexToAddress("0x1234567890123456789012345678901234567890")
 
@@ -135,6 +138,24 @@ func TestStorageFactory_ApplyAddressToIndex(t *testing.T) {
 	// one more address
 	address3 := common.HexToAddress("0x1234567890123456789012345678901234567892")
 	index, err = factory.ApplyAddressToIndex(address3)
+	require.NoError(t, err)
+	require.Equal(t, TreeAddressIndex(2), index)
+
+	// add  address2 again
+	index, err = factory.ApplyAddressToIndex(address2)
+	require.NoError(t, err)
+	require.Equal(t, TreeAddressIndex(1), index)
+
+	// find the address index
+	index, err = factory.FindAddressIndex(address)
+	require.NoError(t, err)
+	require.Equal(t, TreeAddressIndex(0), index)
+
+	index, err = factory.FindAddressIndex(address2)
+	require.NoError(t, err)
+	require.Equal(t, TreeAddressIndex(1), index)
+
+	index, err = factory.FindAddressIndex(address3)
 	require.NoError(t, err)
 	require.Equal(t, TreeAddressIndex(2), index)
 }

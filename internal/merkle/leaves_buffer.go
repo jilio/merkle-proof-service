@@ -14,26 +14,24 @@
  * limitations under the License.
  */
 
-package indexer
+package merkle
 
 import (
 	"sync"
 
 	"github.com/holiman/uint256"
-
-	"github.com/Galactica-corp/merkle-proof-service/internal/merkle"
 )
 
 type (
 	LeavesBuffer struct {
-		buffer []merkle.Leaf
+		buffer []Leaf
 		mu     *sync.Mutex
 	}
 )
 
 func NewLeavesBuffer() *LeavesBuffer {
 	return &LeavesBuffer{
-		buffer: make([]merkle.Leaf, 0),
+		buffer: make([]Leaf, 0),
 		mu:     &sync.Mutex{},
 	}
 }
@@ -42,7 +40,7 @@ func (b *LeavesBuffer) AppendLeaf(index uint32, value *uint256.Int) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	b.buffer = append(b.buffer, merkle.Leaf{
+	b.buffer = append(b.buffer, Leaf{
 		Index: index,
 		Value: value,
 	})
@@ -50,7 +48,7 @@ func (b *LeavesBuffer) AppendLeaf(index uint32, value *uint256.Int) error {
 	return nil
 }
 
-func (b *LeavesBuffer) Leaves() []merkle.Leaf {
+func (b *LeavesBuffer) Leaves() []Leaf {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
