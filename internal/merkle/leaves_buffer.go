@@ -36,7 +36,7 @@ func NewLeavesBuffer() *LeavesBuffer {
 	}
 }
 
-func (b *LeavesBuffer) AppendLeaf(index uint32, value *uint256.Int) error {
+func (b *LeavesBuffer) AppendLeaf(index LeafIndex, value *uint256.Int) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 

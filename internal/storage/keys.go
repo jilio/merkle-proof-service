@@ -16,9 +16,13 @@
 
 package storage
 
+const (
+	PrefixLength = 1
+)
+
 var (
 	JobKeyPrefix              = byte(0x00)
-	MerkleTreeKeyPrefix       = byte(0x01)
+	MerkleTreeLeafKeyPrefix   = byte(0x01)
 	MerkleTreeLeafIndexPrefix = byte(0x02)
 
 	MerkleTreeAddressIndexPrefix        = byte(0x03)

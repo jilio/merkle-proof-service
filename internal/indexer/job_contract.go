@@ -19,6 +19,8 @@ package indexer
 const (
 	ContractKYCRecordRegistry       Contract = 1
 	ContractKYCRecordRegistryString string   = "KYCRecordRegistry"
+
+	ContractTypeLength = 1
 )
 
 type (

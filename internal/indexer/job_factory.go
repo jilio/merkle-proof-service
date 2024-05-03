@@ -39,8 +39,8 @@ type (
 	}
 
 	TreeFactory interface {
-		CreateTreeForAddress(index merkle.TreeAddressIndex) (*merkle.SparseTree, error)
-		FindAddressIndex(address common.Address) (merkle.TreeAddressIndex, error)
+		GetTreeByIndex(index merkle.TreeIndex) (*merkle.SparseTree, error)
+		FindTreeIndex(address common.Address) (merkle.TreeIndex, error)
 	}
 
 	DBBatchCreator interface {
@@ -51,13 +51,20 @@ type (
 		UpsertJob(_ context.Context, store StoreSetter, job Job) error
 	}
 
+	TreeMutex interface {
+		Lock(merkle.TreeIndex)
+		Unlock(merkle.TreeIndex)
+	}
+
 	// JobFactory is a factory that produces event handlers based on provided contract.
 	JobFactory struct {
-		client       bind.ContractFilterer
-		treeFactory  TreeFactory
-		jobUpdater   JobUpdater
-		batchCreator DBBatchCreator
-		logger       log.Logger
+		client          bind.ContractFilterer
+		treeFactory     TreeFactory
+		jobUpdater      JobUpdater
+		batchCreator    DBBatchCreator
+		leafIndexSetter LeafIndexSetter
+		treesMutex      TreeMutex
+		logger          log.Logger
 	}
 )
 
@@ -66,14 +73,18 @@ func NewJobFactory(
 	merkleTree TreeFactory,
 	jobUpdater JobUpdater,
 	batchCreator DBBatchCreator,
+	leafIndexSetter LeafIndexSetter,
+	treesMutex TreeMutex,
 	logger log.Logger,
 ) *JobFactory {
 	return &JobFactory{
-		client:       client,
-		treeFactory:  merkleTree,
-		jobUpdater:   jobUpdater,
-		batchCreator: batchCreator,
-		logger:       logger,
+		client:          client,
+		treeFactory:     merkleTree,
+		jobUpdater:      jobUpdater,
+		batchCreator:    batchCreator,
+		leafIndexSetter: leafIndexSetter,
+		treesMutex:      treesMutex,
+		logger:          logger,
 	}
 }
 
@@ -81,20 +92,22 @@ func NewJobFactory(
 func (f *JobFactory) Produce(jobDescriptor JobDescriptor) (JobHandler, error) {
 	switch jobDescriptor.Contract {
 	case ContractKYCRecordRegistry:
-		addressIndex, err := f.treeFactory.FindAddressIndex(jobDescriptor.Address)
+		treeIndex, err := f.treeFactory.FindTreeIndex(jobDescriptor.Address)
 		if err != nil {
 			return nil, fmt.Errorf("get address index for address %s: %w", jobDescriptor.Address.String(), err)
 		}
 
-		tree, err := f.treeFactory.CreateTreeForAddress(addressIndex)
+		tree, err := f.treeFactory.GetTreeByIndex(treeIndex)
 		if err != nil {
 			return nil, fmt.Errorf("get merkle tree for address %s: %w", jobDescriptor.Address.String(), err)
 		}
 		return NewKYCRecordRegistryJob(
-			JobDescriptorWithAddressIndex{jobDescriptor, addressIndex},
+			JobDescriptorWithTreeIndex{jobDescriptor, treeIndex},
 			f.jobUpdater,
-			tree,
 			f.batchCreator,
+			tree,
+			f.leafIndexSetter,
+			f.treesMutex,
 			f.logger,
 		), nil
 

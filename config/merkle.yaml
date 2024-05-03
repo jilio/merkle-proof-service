@@ -3,6 +3,12 @@ log_level: debug
 # TODO: support multiple endpoints
 evm_rpc: wss://evm-rpc-ws-reticulum.galactica.com
 
+grpc:
+  address: localhost:50651
+
+grpc_gateway:
+  address: localhost:8480
+
 jobs:
   - address: 0x85032c035494324f62A5AfE2507d5427dFd72e76
     contract: KYCRecordRegistry

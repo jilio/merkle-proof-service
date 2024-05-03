@@ -26,39 +26,42 @@ import (
 )
 
 const (
-	// addressIndexKeyLength is the length of the key for the address index.
-	// It is 1 byte for the prefix and 20 bytes for the address.
-	addressIndexKeyLength = 1 + common.AddressLength
+	// treeIndexKeyLength is the length of the tree address index key in bytes.
+	treeIndexKeyLength = storage.PrefixLength + common.AddressLength
+
+	// TreeIndexLength is the length of the tree index type in bytes.
+	TreeIndexLength = 1
 )
 
 type (
-	// AddressIndexStorage is a storage for the address index.
-	// It is stores the address index for the given registry address.
-	// structure:
+	// TreeIndexStorage serves as a storage mechanism for the ZkCertificateRegistry contract's address index.
+	// It maintains the index associated with each registry address.
+	// Structure:
 	//  MerkleTreeAddressIndexPrefix -> address -> index
 	//  MerkleTreeAddressIndexCounterPrefix -> index counter
-	AddressIndexStorage struct {
+	TreeIndexStorage struct {
 		database db.DB
 	}
 
-	TreeAddressIndex uint8
+	// TreeIndex is the index of the ZkCertificateRegistry contract address
+	TreeIndex uint8
 )
 
-// NewAddressIndexStorage creates a new address index storage.
-func NewAddressIndexStorage(database db.DB) *AddressIndexStorage {
-	return &AddressIndexStorage{database: database}
+// NewTreeIndexStorage creates a new address index storage.
+func NewTreeIndexStorage(database db.DB) *TreeIndexStorage {
+	return &TreeIndexStorage{database: database}
 }
 
 // ApplyAddressToIndex applies the address to the address index and returns the index.
-func (f *AddressIndexStorage) ApplyAddressToIndex(address common.Address) (TreeAddressIndex, error) {
+func (f *TreeIndexStorage) ApplyAddressToIndex(address common.Address) (TreeIndex, error) {
 	// check if the address index is already set
-	index, err := f.FindAddressIndex(address)
+	index, err := f.FindTreeIndex(address)
 	if err == nil {
 		return index, nil
 	}
 
 	// get the next available index
-	index, err = f.getNextAddressIndex()
+	index, err = f.getNextTreeIndex()
 	if err != nil {
 		return 0, fmt.Errorf("get next address index: %w", err)
 	}
@@ -67,8 +70,8 @@ func (f *AddressIndexStorage) ApplyAddressToIndex(address common.Address) (TreeA
 	batch := f.database.NewBatch()
 	defer func() { _ = batch.Close() }()
 
-	if err = f.setAddressIndex(batch, address, index); err != nil {
-		return 0, fmt.Errorf("set address index: %w", err)
+	if err = f.setIndex(batch, address, index); err != nil {
+		return 0, fmt.Errorf("set address to index: %w", err)
 	}
 
 	if err = f.setIndexCounter(batch, index); err != nil {
@@ -82,9 +85,9 @@ func (f *AddressIndexStorage) ApplyAddressToIndex(address common.Address) (TreeA
 	return index, nil
 }
 
-// FindAddressIndex finds the address index for the given address.
-func (f *AddressIndexStorage) FindAddressIndex(address common.Address) (TreeAddressIndex, error) {
-	key := makeAddressIndexKey(address)
+// FindTreeIndex finds the address index for the given address.
+func (f *TreeIndexStorage) FindTreeIndex(address common.Address) (TreeIndex, error) {
+	key := makeTreeIndexKey(address)
 	data, err := f.database.Get(key)
 	if err != nil {
 		return 0, err
@@ -94,23 +97,23 @@ func (f *AddressIndexStorage) FindAddressIndex(address common.Address) (TreeAddr
 		return 0, ErrNotFound
 	}
 
-	return TreeAddressIndex(data[0]), nil
+	return TreeIndex(data[0]), nil
 }
 
-// setAddressIndex sets the address index for the given address.
-func (f *AddressIndexStorage) setAddressIndex(batch db.Batch, address common.Address, index TreeAddressIndex) error {
+// setIndex sets the address index for the given address.
+func (f *TreeIndexStorage) setIndex(batch db.Batch, address common.Address, index TreeIndex) error {
 	// check if the address index is already set
-	_, err := f.FindAddressIndex(address)
+	_, err := f.FindTreeIndex(address)
 	if err == nil {
 		return fmt.Errorf("address index already set for address %s", address.String())
 	}
 
-	return batch.Set(makeAddressIndexKey(address), []byte{byte(index)})
+	return batch.Set(makeTreeIndexKey(address), []byte{byte(index)})
 }
 
-func (f *AddressIndexStorage) getNextAddressIndex() (TreeAddressIndex, error) {
+func (f *TreeIndexStorage) getNextTreeIndex() (TreeIndex, error) {
 	// iterate through all the address indexes to find the next available index
-	counter, err := f.database.Get(makeAddressIndexCounterKey())
+	counter, err := f.database.Get(makeTreeIndexCounterKey())
 	if err != nil {
 		return 0, err
 	}
@@ -119,21 +122,21 @@ func (f *AddressIndexStorage) getNextAddressIndex() (TreeAddressIndex, error) {
 		return 0, nil
 	}
 
-	return TreeAddressIndex(counter[0]) + 1, nil
+	return TreeIndex(counter[0]) + 1, nil
 }
 
-func (f *AddressIndexStorage) setIndexCounter(batch db.Batch, index TreeAddressIndex) error {
-	return batch.Set(makeAddressIndexCounterKey(), []byte{byte(index)})
+func (f *TreeIndexStorage) setIndexCounter(batch db.Batch, index TreeIndex) error {
+	return batch.Set(makeTreeIndexCounterKey(), []byte{byte(index)})
 }
 
-func makeAddressIndexKey(contractAddr common.Address) []byte {
-	key := make([]byte, addressIndexKeyLength)
+func makeTreeIndexKey(contractAddr common.Address) []byte {
+	key := make([]byte, treeIndexKeyLength)
 	key[0] = storage.MerkleTreeAddressIndexPrefix
-	copy(key[1:], contractAddr[:])
+	copy(key[storage.PrefixLength:], contractAddr[:common.AddressLength])
 
 	return key
 }
 
-func makeAddressIndexCounterKey() []byte {
+func makeTreeIndexCounterKey() []byte {
 	return []byte{storage.MerkleTreeAddressIndexCounterPrefix}
 }

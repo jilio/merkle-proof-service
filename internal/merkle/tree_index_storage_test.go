@@ -24,56 +24,56 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAddressIndexStorage_GetStorageForAddress(t *testing.T) {
-	factory := NewAddressIndexStorage(db.NewMemDB())
+func TestTreeIndexStorage_GetStorageForAddress(t *testing.T) {
+	factory := NewTreeIndexStorage(db.NewMemDB())
 	address := common.HexToAddress("0x1234567890123456789012345678901234567890")
 
 	// set address index
 	batch := factory.database.NewBatch()
-	err := factory.setAddressIndex(batch, address, 0)
+	err := factory.setIndex(batch, address, 0)
 	require.NoError(t, err)
 	err = batch.WriteSync()
 	require.NoError(t, err)
 }
 
-func TestAddressIndexStorage_SetAddressIndex(t *testing.T) {
-	factory := NewAddressIndexStorage(db.NewMemDB())
+func TestTreeIndexStorage_FindTreeIndex(t *testing.T) {
+	factory := NewTreeIndexStorage(db.NewMemDB())
 	address := common.HexToAddress("0x1234567890123456789012345678901234567890")
 
 	batch := factory.database.NewBatch()
-	err := factory.setAddressIndex(batch, address, 0)
+	err := factory.setIndex(batch, address, 0)
 	require.NoError(t, err)
 	err = batch.WriteSync()
 	require.NoError(t, err)
 
 	// set the address index again
 	batch = factory.database.NewBatch()
-	err = factory.setAddressIndex(batch, address, 0)
+	err = factory.setIndex(batch, address, 0)
 	require.Error(t, err)
 
 	// set the address index for another address
 	address2 := common.HexToAddress("0x1234567890123456789012345678901234567891")
-	err = factory.setAddressIndex(batch, address2, 0)
+	err = factory.setIndex(batch, address2, 0)
 	require.NoError(t, err)
 	err = batch.WriteSync()
 	require.NoError(t, err)
 
 	// find the address index
-	index, err := factory.FindAddressIndex(address)
+	index, err := factory.FindTreeIndex(address)
 	require.NoError(t, err)
-	require.Equal(t, TreeAddressIndex(0), index)
+	require.Equal(t, TreeIndex(0), index)
 
-	index2, err := factory.FindAddressIndex(address2)
+	index2, err := factory.FindTreeIndex(address2)
 	require.NoError(t, err)
-	require.Equal(t, TreeAddressIndex(0), index2)
+	require.Equal(t, TreeIndex(0), index2)
 }
 
-func TestAddressIndexStorage_GetNextAddressIndex(t *testing.T) {
-	factory := NewAddressIndexStorage(db.NewMemDB())
+func TestTreeIndexStorage_GetNextAddressIndex(t *testing.T) {
+	factory := NewTreeIndexStorage(db.NewMemDB())
 
-	index, err := factory.getNextAddressIndex()
+	index, err := factory.getNextTreeIndex()
 	require.NoError(t, err)
-	require.Equal(t, TreeAddressIndex(0), index)
+	require.Equal(t, TreeIndex(0), index)
 
 	// set the address index 0
 	batch := factory.database.NewBatch()
@@ -82,9 +82,9 @@ func TestAddressIndexStorage_GetNextAddressIndex(t *testing.T) {
 	err = batch.WriteSync()
 	require.NoError(t, err)
 
-	index, err = factory.getNextAddressIndex()
+	index, err = factory.getNextTreeIndex()
 	require.NoError(t, err)
-	require.Equal(t, TreeAddressIndex(1), index)
+	require.Equal(t, TreeIndex(1), index)
 
 	// set the address index 1
 	batch = factory.database.NewBatch()
@@ -93,13 +93,13 @@ func TestAddressIndexStorage_GetNextAddressIndex(t *testing.T) {
 	err = batch.WriteSync()
 	require.NoError(t, err)
 
-	index, err = factory.getNextAddressIndex()
+	index, err = factory.getNextTreeIndex()
 	require.NoError(t, err)
-	require.Equal(t, TreeAddressIndex(2), index)
+	require.Equal(t, TreeIndex(2), index)
 }
 
-func TestAddressIndexStorage_SetIndexCounter(t *testing.T) {
-	factory := NewAddressIndexStorage(db.NewMemDB())
+func TestTreeIndexStorage_SetIndexCounter(t *testing.T) {
+	factory := NewTreeIndexStorage(db.NewMemDB())
 
 	batch := factory.database.NewBatch()
 	err := factory.setIndexCounter(batch, 0)
@@ -115,47 +115,47 @@ func TestAddressIndexStorage_SetIndexCounter(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestAddressIndexStorage_ApplyAddressToIndex(t *testing.T) {
-	factory := NewAddressIndexStorage(db.NewMemDB())
+func TestTreeIndexStorage_ApplyAddressToIndex(t *testing.T) {
+	factory := NewTreeIndexStorage(db.NewMemDB())
 	address := common.HexToAddress("0x1234567890123456789012345678901234567890")
 
 	// apply address to index
 	index, err := factory.ApplyAddressToIndex(address)
 	require.NoError(t, err)
-	require.Equal(t, TreeAddressIndex(0), index)
+	require.Equal(t, TreeIndex(0), index)
 
 	// apply address to index again
 	index, err = factory.ApplyAddressToIndex(address)
 	require.NoError(t, err)
-	require.Equal(t, TreeAddressIndex(0), index)
+	require.Equal(t, TreeIndex(0), index)
 
 	// apply another address to index
 	address2 := common.HexToAddress("0x1234567890123456789012345678901234567891")
 	index, err = factory.ApplyAddressToIndex(address2)
 	require.NoError(t, err)
-	require.Equal(t, TreeAddressIndex(1), index)
+	require.Equal(t, TreeIndex(1), index)
 
 	// one more address
 	address3 := common.HexToAddress("0x1234567890123456789012345678901234567892")
 	index, err = factory.ApplyAddressToIndex(address3)
 	require.NoError(t, err)
-	require.Equal(t, TreeAddressIndex(2), index)
+	require.Equal(t, TreeIndex(2), index)
 
 	// add  address2 again
 	index, err = factory.ApplyAddressToIndex(address2)
 	require.NoError(t, err)
-	require.Equal(t, TreeAddressIndex(1), index)
+	require.Equal(t, TreeIndex(1), index)
 
 	// find the address index
-	index, err = factory.FindAddressIndex(address)
+	index, err = factory.FindTreeIndex(address)
 	require.NoError(t, err)
-	require.Equal(t, TreeAddressIndex(0), index)
+	require.Equal(t, TreeIndex(0), index)
 
-	index, err = factory.FindAddressIndex(address2)
+	index, err = factory.FindTreeIndex(address2)
 	require.NoError(t, err)
-	require.Equal(t, TreeAddressIndex(1), index)
+	require.Equal(t, TreeIndex(1), index)
 
-	index, err = factory.FindAddressIndex(address3)
+	index, err = factory.FindTreeIndex(address3)
 	require.NoError(t, err)
-	require.Equal(t, TreeAddressIndex(2), index)
+	require.Equal(t, TreeIndex(2), index)
 }

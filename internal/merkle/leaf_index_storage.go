@@ -28,18 +28,16 @@ import (
 
 const (
 	// LeafIndexBytesSize is the size of leaf index in bytes.
-	LeafIndexBytesSize = 4
+	LeafIndexBytesSize = storage.PrefixLength + TreeIndexLength + LeafValueTypeLength
 )
 
 type (
-	// LeafIndexStorage is a storage for leaf index.
+	// LeafIndexStorage is a storage for the tree leaf value to leaf index mapping.
 	// Store structure:
 	//  leafValue -> leafIndex
 	LeafIndexStorage struct {
 		database db.DB
 	}
-
-	LeafIndex uint32
 )
 
 // NewLeafIndexStorage creates a new LeafIndexStorage.
@@ -48,8 +46,8 @@ func NewLeafIndexStorage(database db.DB) *LeafIndexStorage {
 }
 
 // GetLeafIndex gets the leaf index by leaf value.
-func (s *LeafIndexStorage) GetLeafIndex(leafValue *uint256.Int) (LeafIndex, error) {
-	leafIndexBytes, err := s.database.Get(makeLeafIndexKey(leafValue))
+func (s *LeafIndexStorage) GetLeafIndex(treeIndex TreeIndex, leafValue *uint256.Int) (LeafIndex, error) {
+	leafIndexBytes, err := s.database.Get(makeLeafIndexKey(treeIndex, leafValue))
 	if err != nil {
 		return 0, err
 	}
@@ -67,13 +65,19 @@ func (s *LeafIndexStorage) GetLeafIndex(leafValue *uint256.Int) (LeafIndex, erro
 }
 
 // SetLeafIndex sets the leaf index by leaf value.
-func (s *LeafIndexStorage) SetLeafIndex(leafValue *uint256.Int, leafIndex LeafIndex) error {
+func (s *LeafIndexStorage) SetLeafIndex(batch db.Batch, treeIndex TreeIndex, leafValue *uint256.Int, leafIndex LeafIndex) error {
 	leafIndexBytes := make([]byte, LeafIndexBytesSize)
 	binary.BigEndian.PutUint32(leafIndexBytes, uint32(leafIndex))
 
-	return s.database.Set(makeLeafIndexKey(leafValue), leafIndexBytes)
+	return batch.Set(makeLeafIndexKey(treeIndex, leafValue), leafIndexBytes)
 }
 
-func makeLeafIndexKey(leafValue *uint256.Int) []byte {
-	return append([]byte{storage.MerkleTreeLeafIndexPrefix}, leafValue.Bytes()...)
+func makeLeafIndexKey(treeIndex TreeIndex, leafValue *uint256.Int) []byte {
+	leafValueBytes := leafValue.Bytes32()
+	key := make([]byte, LeafIndexBytesSize)
+	key[0] = storage.MerkleTreeLeafIndexPrefix
+	key[storage.PrefixLength] = byte(treeIndex)
+	copy(key[storage.PrefixLength+TreeIndexLength:], leafValueBytes[:LeafValueTypeLength])
+
+	return key
 }

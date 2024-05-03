@@ -27,14 +27,25 @@ import (
 
 	"github.com/Galactica-corp/merkle-proof-service/cmd/galacticad-merkle/cmd/ctx"
 	"github.com/Galactica-corp/merkle-proof-service/internal/indexer"
+	"github.com/Galactica-corp/merkle-proof-service/internal/query"
 	"github.com/Galactica-corp/merkle-proof-service/internal/utils"
+	pkgindexer "github.com/Galactica-corp/merkle-proof-service/pkg/indexer"
 )
 
 const (
-	evmRpcFlag    = "evm-rpc"
-	evmRpcEnv     = "EVM_RPC"
-	evmRpcViper   = "evm_rpc"
-	jobsViper     = "jobs"
+	evmRpcFlag  = "evm-rpc"
+	evmRpcEnv   = "EVM_RPC"
+	evmRpcViper = "evm_rpc"
+	jobsViper   = "jobs"
+
+	grpcAddressFlag  = "grpc.address"
+	grpcAddressViper = "grpc.address"
+	grpcAddressEnv   = "GRPC_ADDRESS"
+
+	grpcGatewayAddressFlag  = "grpc-gateway.address"
+	grpcGatewayAddressViper = "grpc_gateway.address"
+	grpcGatewayAddressEnv   = "GRPC_GATEWAY_ADDRESS"
+
 	defaultEvmRpc = "http://localhost:8545"
 )
 
@@ -65,14 +76,18 @@ func CreateStartCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("get indexer jobs: %w", err)
 			}
-
 			for _, job := range jobs {
 				logger.Info("job found in config", "job", job.String())
 			}
 
-			serverLogger := logger.With("service", "merkle")
+			appConfig := pkgindexer.ApplicationConfig{
+				EvmRpc:      evmRpc,
+				DbPath:      dbPath,
+				Jobs:        jobs,
+				QueryServer: getQueryServerConfig(),
+			}
 
-			if err := indexer.StartServer(cmd.Context(), evmRpc, dbPath, jobs, serverLogger); err != nil {
+			if err := pkgindexer.StartApplication(cmd.Context(), appConfig, logger); err != nil {
 				return fmt.Errorf("start indexer server: %w", err)
 			}
 
@@ -89,13 +104,16 @@ func CreateStartCmd() *cobra.Command {
 
 func initFlags(indexerStartCmd *cobra.Command) {
 	indexerStartCmd.Flags().String(evmRpcFlag, defaultEvmRpc, "EVM RPC endpoint")
+	indexerStartCmd.Flags().String(grpcAddressFlag, query.GrpcServerAddr, "gRPC server address")
+	indexerStartCmd.Flags().String(grpcGatewayAddressFlag, query.GatewayAddr, "gRPC gateway address")
 
-	utils.MustBindPFlag(
-		viper.GetViper(),
-		evmRpcViper,
-		indexerStartCmd.Flags().Lookup(evmRpcFlag),
-	)
+	utils.MustBindPFlag(viper.GetViper(), evmRpcViper, indexerStartCmd.Flags().Lookup(evmRpcFlag))
+	utils.MustBindPFlag(viper.GetViper(), grpcAddressViper, indexerStartCmd.Flags().Lookup(grpcAddressFlag))
+	utils.MustBindPFlag(viper.GetViper(), grpcGatewayAddressViper, indexerStartCmd.Flags().Lookup(grpcGatewayAddressFlag))
+
 	viper.MustBindEnv(evmRpcViper, evmRpcEnv)
+	viper.MustBindEnv(grpcAddressViper, grpcAddressEnv)
+	viper.MustBindEnv(grpcGatewayAddressViper, grpcGatewayAddressEnv)
 }
 
 func getIndexerJobs() ([]indexer.JobDescriptor, error) {
@@ -152,4 +170,15 @@ func getIndexerJobs() ([]indexer.JobDescriptor, error) {
 	}
 
 	return jobDescriptors, nil
+}
+
+func getQueryServerConfig() pkgindexer.QueryServerConfig {
+	return pkgindexer.QueryServerConfig{
+		GRPC: struct{ Address string }{
+			Address: viper.GetString(grpcAddressViper),
+		},
+		GRPCGateway: struct{ Address string }{
+			Address: viper.GetString(grpcGatewayAddressViper),
+		},
+	}
 }

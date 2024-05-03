@@ -13,12 +13,8 @@ import (
 )
 
 const (
-	// storageKeySize is the size of the key in the storage. It is calculated as follows:
-	// - 1 byte for the prefix
-	// - common.AddressLength
-	// - 1 byte for the contract type
-	// - 8 bytes for the start block
-	storageKeySize = 1 + common.AddressLength + 1 + 8
+	// jobKeyLength is the size of the key in bytes used to store a job in the storage.
+	jobKeyLength = storage.PrefixLength + common.AddressLength + ContractTypeLength + BlockTypeLength
 )
 
 var (
@@ -106,11 +102,11 @@ func (q *JobStorage) SelectAllJobs(ctx context.Context) ([]Job, error) {
 }
 
 func makeJobKey(job JobDescriptor) []byte {
-	key := make([]byte, 0, storageKeySize)
+	key := make([]byte, 0, jobKeyLength)
 	key = append(key, storage.JobKeyPrefix)
 	key = append(key, job.Address.Bytes()[0:common.AddressLength]...)
 	key = append(key, byte(job.Contract))
-	key = append(key, utils.Uint64ToBigEndian(job.StartBlock)[0:8]...)
+	key = append(key, utils.Uint64ToBigEndian(job.StartBlock)[:BlockTypeLength]...)
 
 	return key
 }

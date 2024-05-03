@@ -17,7 +17,11 @@
 package merkle
 
 import (
+	"context"
+	"fmt"
+	"math/rand/v2"
 	"testing"
+	"time"
 
 	db "github.com/cometbft/cometbft-db"
 	"github.com/holiman/uint256"
@@ -106,7 +110,7 @@ func TestSparseTree_CreateProof(t *testing.T) {
 	require.NoError(t, batch.WriteSync())
 
 	// create proof:
-	proof, err := sparseTree.CreateProof(42)
+	proof, err := sparseTree.CreateProof(context.Background(), 42)
 	require.NoError(t, err)
 
 	expectedProof := &Proof{
@@ -158,26 +162,65 @@ func TestSparseTree_CreateProof(t *testing.T) {
 	}
 }
 
-//func BenchmarkInsertLeaves(b *testing.B) {
-//	sparseTree, err := NewSparseTree(32, EmptyLeafValue)
-//	require.NoError(b, err)
-//
-//	// generate some indexes:
-//	indexes := make([]uint32, 10000)
-//	values := make([]*uint256.Int, 10000)
-//	for i := 0; i < 10000; i++ {
-//		//indexes[uint32(i)] = uint256.NewInt(rand.Uint64())
-//		indexes[i] = uint32(i)
-//		values[i] = uint256.NewInt(rand.Uint64())
-//	}
-//
-//	// reset timer:
-//	b.ResetTimer()
-//
-//	index := 0
-//	for i := 0; i < b.N; i++ {
-//		_ = sparseTree.InsertLeaf(indexes[index], values[index])
-//		index++
-//	}
-//
-//}
+func BenchmarkInsertLeaves(b *testing.B) {
+	treeStorage := NewSparseTreeStorage(db.NewMemDB(), 0)
+	sparseTree, err := NewSparseTree(32, EmptyLeafValue, treeStorage)
+	require.NoError(b, err)
+
+	// generate some indexes:
+	indexes := make([]LeafIndex, 10000)
+	values := make([]*uint256.Int, 10000)
+	for i := 0; i < 10000; i++ {
+		indexes[i] = LeafIndex(i)
+		values[i] = uint256.NewInt(rand.Uint64())
+	}
+
+	// reset timer:
+	b.ResetTimer()
+
+	index := 0
+	for i := 0; i < b.N; i++ {
+		_ = sparseTree.InsertLeaf(treeStorage, indexes[index], values[index])
+		index++
+	}
+}
+
+func BenchmarkCreateProof(b *testing.B) {
+	kv, err := db.NewGoLevelDB("merkle", "./testdb/")
+	require.NoError(b, err)
+	defer kv.Close()
+	treeStorage := NewSparseTreeStorage(kv, 0)
+
+	sparseTree, err := NewSparseTree(32, EmptyLeafValue, treeStorage)
+	require.NoError(b, err)
+
+	// insert 10000 leaves:
+	countLeaves := 100000
+	leaves := make([]Leaf, countLeaves)
+	for i := 0; i < countLeaves; i++ {
+		leaves[i] = Leaf{Index: LeafIndex(rand.Uint32()), Value: uint256.NewInt(rand.Uint64())}
+	}
+	batch := NewBatchWithLeavesBuffer(treeStorage.NewBatch(), 0)
+	_ = sparseTree.InsertLeaves(batch, leaves)
+	require.NoError(b, batch.WriteSync())
+
+	b.ResetTimer()
+
+	start := time.Now()
+	totalOps := 0
+	index := 0
+	for i := 0; i < b.N; i++ {
+		_, err := sparseTree.CreateProof(context.Background(), leaves[index].Index)
+		require.NoError(b, err)
+		index++
+		if index >= countLeaves {
+			index = 0
+		}
+		totalOps++
+	}
+
+	fmt.Println("end:", time.Since(start))
+	fmt.Println("total ops:", totalOps)
+	fmt.Println("average ops/s:", float64(totalOps)/time.Since(start).Seconds())
+
+}

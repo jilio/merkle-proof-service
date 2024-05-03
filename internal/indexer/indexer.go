@@ -31,6 +31,8 @@ const (
 	sinkSize          = 100
 	maxBlocksDistance = 10000
 	sinkProgressTick  = 5 * time.Second
+
+	BlockTypeLength = 8
 )
 
 type (

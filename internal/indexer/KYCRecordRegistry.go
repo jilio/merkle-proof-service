@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math/big"
 
+	db "github.com/cometbft/cometbft-db"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -46,16 +47,28 @@ type (
 		InsertLeaves(store merkle.TreeLeafGetterSetter, leaves []merkle.Leaf) error
 	}
 
-	JobDescriptorWithAddressIndex struct {
+	LeafIndexSetter interface {
+		SetLeafIndex(
+			batch db.Batch,
+			treeIndex merkle.TreeIndex,
+			leafValue *uint256.Int,
+			leafIndex merkle.LeafIndex,
+		) error
+	}
+
+	JobDescriptorWithTreeIndex struct {
 		JobDescriptor
-		RegistryAddressIndex merkle.TreeAddressIndex
+		TreeIndex merkle.TreeIndex
 	}
 
 	KYCRecordRegistryJob struct {
-		jobDescriptor JobDescriptorWithAddressIndex
+		jobDescriptor JobDescriptorWithTreeIndex
 		jobUpdater    JobUpdater
-		merkleTree    MerkleTreeLeavesInserter
 		batchCreator  DBBatchCreator
+
+		merkleTree MerkleTreeLeavesInserter
+		leafIndex  LeafIndexSetter
+		treeMutex  TreeMutex
 
 		logger log.Logger
 		parser *KYCRecordRegistry.KYCRecordRegistryFilterer
@@ -63,25 +76,31 @@ type (
 )
 
 func NewKYCRecordRegistryJob(
-	jobDescriptor JobDescriptorWithAddressIndex,
+	jobDescriptor JobDescriptorWithTreeIndex,
 	jobUpdater JobUpdater,
-	merkleTree MerkleTreeLeavesInserter,
 	dbBatchCreator DBBatchCreator,
+	merkleTree MerkleTreeLeavesInserter,
+	leafIndex LeafIndexSetter,
+	treeMutex TreeMutex,
 	logger log.Logger,
 ) *KYCRecordRegistryJob {
 	return &KYCRecordRegistryJob{
 		jobDescriptor: jobDescriptor,
 		jobUpdater:    jobUpdater,
-		merkleTree:    merkleTree,
 		batchCreator:  dbBatchCreator,
+		merkleTree:    merkleTree,
+		leafIndex:     leafIndex,
+		treeMutex:     treeMutex,
 		logger:        logger,
 	}
 }
 
+// PrepareContext prepares the context for the job.
 func (job *KYCRecordRegistryJob) PrepareContext(ctx context.Context) (context.Context, error) {
 	return WithLeavesBuffer(ctx, merkle.NewLeavesBuffer()), nil
 }
 
+// HandleEVMLog handles the EVM log and updates the leaves buffer.
 func (job *KYCRecordRegistryJob) HandleEVMLog(ctx context.Context, log types.Log) error {
 	contractABI, err := KYCRecordRegistry.KYCRecordRegistryMetaData.GetAbi()
 	if err != nil {
@@ -112,18 +131,30 @@ func (job *KYCRecordRegistryJob) HandleEVMLog(ctx context.Context, log types.Log
 	return nil
 }
 
+// Commit commits the leaves buffer to the merkle tree and the database.
 func (job *KYCRecordRegistryJob) Commit(ctx context.Context, block uint64) error {
 	leavesBuffer, ok := LeavesBufferFromContext(ctx)
 	if !ok {
 		return fmt.Errorf("leaves buffer not found in context")
 	}
 
+	treeIndex := job.jobDescriptor.TreeIndex
 	batch := job.batchCreator.NewBatch()
 	leaves := leavesBuffer.Leaves()
+
 	if len(leaves) > 0 {
-		batchWithBuffer := merkle.NewBatchWithLeavesBuffer(batch, job.jobDescriptor.RegistryAddressIndex)
+		batchWithBuffer := merkle.NewBatchWithLeavesBuffer(batch, treeIndex)
+
+		// insert leaves into the merkle tree
 		if err := job.merkleTree.InsertLeaves(batchWithBuffer, leaves); err != nil {
 			return fmt.Errorf("insert leaves: %w", err)
+		}
+
+		// set leaf index for each leaf
+		for _, leaf := range leaves {
+			if err := job.leafIndex.SetLeafIndex(batch, treeIndex, leaf.Value, leaf.Index); err != nil {
+				return fmt.Errorf("set leaf index: %w", err)
+			}
 		}
 
 		job.logger.Info(
@@ -134,6 +165,7 @@ func (job *KYCRecordRegistryJob) Commit(ctx context.Context, block uint64) error
 		)
 	}
 
+	// update the job's current block in order to resume from the last known block later
 	if err := job.jobUpdater.UpsertJob(ctx, batch, Job{
 		JobDescriptor: job.jobDescriptor.JobDescriptor,
 		CurrentBlock:  block,
@@ -141,11 +173,9 @@ func (job *KYCRecordRegistryJob) Commit(ctx context.Context, block uint64) error
 		return fmt.Errorf("update job's current startBlock: %w", err)
 	}
 
-	// TODO: create a mutex rw for the tree, which is unlocked after the write is synchronized
-	// TODO: We need this because users are reading the tree in parts while we are writing it.
-	// TODO: And it is possible to read incorrect data.
-	if err := batch.WriteSync(); err != nil {
-		return fmt.Errorf("write batch to storage: %w", err)
+	// write the batch with a lock on the tree index
+	if err := job.writeBatchWithLock(batch); err != nil {
+		return fmt.Errorf("write batch with lock: %w", err)
 	}
 
 	job.logger.Info("job progress", "job", job.jobDescriptor.String(), "block", block)
@@ -153,6 +183,16 @@ func (job *KYCRecordRegistryJob) Commit(ctx context.Context, block uint64) error
 	return nil
 }
 
+// writeBatchWithLock writes the batch to the database with a lock on the tree index.
+func (job *KYCRecordRegistryJob) writeBatchWithLock(batch db.Batch) error {
+	// we need to lock the tree index to prevent reading the tree while it is being updated
+	job.treeMutex.Lock(job.jobDescriptor.TreeIndex)
+	defer job.treeMutex.Unlock(job.jobDescriptor.TreeIndex)
+
+	return batch.WriteSync()
+}
+
+// FilterQuery returns the filter query for the job to listen to the contract events.
 func (job *KYCRecordRegistryJob) FilterQuery() (ethereum.FilterQuery, error) {
 	contractABI, err := KYCRecordRegistry.KYCRecordRegistryMetaData.GetAbi()
 	if err != nil {
@@ -177,6 +217,7 @@ func (job *KYCRecordRegistryJob) FilterQuery() (ethereum.FilterQuery, error) {
 	return query, nil
 }
 
+// handleZKKYCRecordAdditionLog handles the zkKYCRecordAddition log and updates the leaves buffer.
 func (job *KYCRecordRegistryJob) handleZKKYCRecordAdditionLog(ctx context.Context, log types.Log) error {
 	parser, err := job.getParserLazy()
 	if err != nil {
@@ -191,7 +232,12 @@ func (job *KYCRecordRegistryJob) handleZKKYCRecordAdditionLog(ctx context.Contex
 	//guardianAddress := zkKYCRecordAddition.Guardian
 	// TODO: save guardian address to the database?
 
-	index := uint32(zkKYCRecordAddition.Index.Uint64())
+	indexU64 := zkKYCRecordAddition.Index.Uint64()
+	if indexU64 >= merkle.MaxLeaves {
+		return fmt.Errorf("zkKYCRecordAddition: index %d is out of bounds", indexU64)
+	}
+
+	index := merkle.LeafIndex(indexU64)
 	leaf, overflow := uint256.FromBig(new(big.Int).SetBytes(zkKYCRecordAddition.ZkKYCRecordLeafHash[:]))
 	if overflow {
 		return fmt.Errorf("zkKYCRecordAddition: leaf hash overflow for index %d", index)
@@ -211,6 +257,7 @@ func (job *KYCRecordRegistryJob) handleZKKYCRecordAdditionLog(ctx context.Contex
 	return nil
 }
 
+// handleZKKYCRecordRevocationLog handles the zkKYCRecordRevocation log and updates the leaves buffer.
 func (job *KYCRecordRegistryJob) handleZKKYCRecordRevocationLog(ctx context.Context, log types.Log) error {
 	parser, err := job.getParserLazy()
 	if err != nil {
@@ -221,7 +268,13 @@ func (job *KYCRecordRegistryJob) handleZKKYCRecordRevocationLog(ctx context.Cont
 	if err != nil {
 		return fmt.Errorf("parse zkKYCRecordRevocation: %w", err)
 	}
-	index := uint32(zkKYCRecordRevocation.Index.Uint64())
+
+	indexU64 := zkKYCRecordRevocation.Index.Uint64()
+	if indexU64 >= merkle.MaxLeaves {
+		return fmt.Errorf("zkKYCRecordRevocation: index %d is out of bounds", indexU64)
+	}
+
+	index := merkle.LeafIndex(indexU64)
 	leaf, overflow := uint256.FromBig(new(big.Int).SetBytes(zkKYCRecordRevocation.ZkKYCRecordLeafHash[:]))
 	if overflow {
 		return fmt.Errorf("zkKYCRecordRevocation: leaf hash overflow for index %d", index)
@@ -241,6 +294,7 @@ func (job *KYCRecordRegistryJob) handleZKKYCRecordRevocationLog(ctx context.Cont
 	return nil
 }
 
+// getParserLazy returns the parser for the contract events.
 func (job *KYCRecordRegistryJob) getParserLazy() (*KYCRecordRegistry.KYCRecordRegistryFilterer, error) {
 	if job.parser != nil {
 		return job.parser, nil
@@ -256,10 +310,12 @@ func (job *KYCRecordRegistryJob) getParserLazy() (*KYCRecordRegistry.KYCRecordRe
 	return parser, err
 }
 
+// WithLeavesBuffer sets the leaves buffer in the context.
 func WithLeavesBuffer(ctx context.Context, buffer *merkle.LeavesBuffer) context.Context {
 	return context.WithValue(ctx, ctxLeavesBufferKey, buffer)
 }
 
+// LeavesBufferFromContext returns the leaves buffer from the context.
 func LeavesBufferFromContext(ctx context.Context) (*merkle.LeavesBuffer, bool) {
 	buffer, ok := ctx.Value(ctxLeavesBufferKey).(*merkle.LeavesBuffer)
 	return buffer, ok

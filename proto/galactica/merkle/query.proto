@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+import "google/api/annotations.proto";
+
+package galactica.merkle;
+
+option go_package = "github.com/Galactica-corp/merkle-proof-service/x/merkle/types";
+
+// Query defines the gRPC querier service.
+service Query {
+  // Proof queries the proof of a leaf in the merkle tree.
+  rpc Proof (QueryProofRequest) returns (QueryProofResponse) {
+    option (google.api.http).get = "/galactica/merkle/proof/{registry}/{leaf}";
+  }
+
+  rpc GetEmptyIndex (GetEmptyIndexRequest) returns (GetEmptyIndexResponse) {
+    option (google.api.http).get = "/galactica/merkle/empty_index/{registry}";
+  }
+}
+
+message QueryProofRequest {
+  string registry = 1;
+  string leaf = 2;
+}
+
+message QueryProofResponse {
+  Proof proof = 1;
+}
+
+message GetEmptyIndexRequest {
+  string registry = 1;
+}
+
+message GetEmptyIndexResponse {
+  uint32 index = 1;
+}
+
+message Proof {
+  string leaf = 1;
+  repeated string path = 2;
+  uint32 index = 3;
+  string root = 4;
+}
