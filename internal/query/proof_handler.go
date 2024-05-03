@@ -58,8 +58,6 @@ func (s *Server) Proof(ctx context.Context, req *merklegen.QueryProofRequest) (*
 		return nil, status.Errorf(codes.Internal, "failed to get leaf index")
 	}
 
-	// TODO: RLock tree while creating proof
-	// TODO: it is needed because the tree is updated in parallel
 	proof, err := s.createProof(ctx, tree, treeIndex, leafIndex)
 	if err != nil {
 		return nil, err
@@ -86,6 +84,7 @@ func (s *Server) createProof(
 	treeIndex merkle.TreeIndex,
 	leafIndex merkle.LeafIndex,
 ) (*merkle.Proof, error) {
+	// the lock here is to prevent the tree from being modified while creating the proof
 	s.treeRMutex.RLock(treeIndex)
 	defer s.treeRMutex.RUnlock(treeIndex)
 

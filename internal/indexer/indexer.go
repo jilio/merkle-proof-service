@@ -79,7 +79,10 @@ func (ixr *Indexer) IndexEVMLogs(ctx context.Context, query ethereum.FilterQuery
 		query.FromBlock = new(big.Int).SetUint64(fromBlock)
 		query.ToBlock = nil
 
-		go ixr.subscribeToEvents(ctx, cancel, query, sink)
+		started := make(chan struct{})
+		go ixr.subscribeToEvents(ctx, cancel, query, sink, started)
+		<-started
+
 		return true
 	}
 
@@ -108,6 +111,11 @@ func (ixr *Indexer) IndexEVMLogs(ctx context.Context, query ethereum.FilterQuery
 		// ethereum.FilterQuery.ToBlock is ignored by the server
 		if !subscriptionStarted && currentBlock-fromBlock <= maxBlocksDistance {
 			subscriptionStarted = startSubscription(ctx, query, sink)
+
+			// query latest block number after the subscription started to avoid missing logs
+			if currentBlock, err = ixr.client.BlockNumber(ctx); err != nil {
+				return fmt.Errorf("get current block number: %w", err)
+			}
 		}
 	}
 
@@ -201,6 +209,7 @@ func (ixr *Indexer) subscribeToEvents(
 	cancel context.CancelCauseFunc,
 	query ethereum.FilterQuery,
 	sink chan<- types.Log,
+	started chan<- struct{},
 ) {
 	defer cancel(nil)
 
@@ -216,6 +225,9 @@ func (ixr *Indexer) subscribeToEvents(
 		return
 	}
 	defer subscription.Unsubscribe()
+
+	// signal that subscription has started
+	close(started)
 
 	for {
 		select {
