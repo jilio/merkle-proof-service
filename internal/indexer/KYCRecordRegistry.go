@@ -252,7 +252,7 @@ func (job *KYCRecordRegistryJob) handleZKKYCRecordAdditionLog(ctx context.Contex
 		return fmt.Errorf("append leaf to buffer: %w", err)
 	}
 
-	job.logger.Info("found zkKYCRecordAddition", "index", index)
+	job.logger.Info("found zkKYCRecordAddition", "index", index, "value", leaf.String())
 
 	return nil
 }

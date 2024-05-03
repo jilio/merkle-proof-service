@@ -169,7 +169,7 @@ func RegisterQueryHandlerServer(ctx context.Context, mux *runtime.ServeMux, serv
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/galactica.merkle.Query/Proof", runtime.WithHTTPPathPattern("/galactica/merkle/proof/{registry}/{leaf}"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/galactica.merkle.Query/Proof", runtime.WithHTTPPathPattern("/v1/galactica/merkle/proof/{registry}/{leaf}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -194,7 +194,7 @@ func RegisterQueryHandlerServer(ctx context.Context, mux *runtime.ServeMux, serv
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/galactica.merkle.Query/GetEmptyIndex", runtime.WithHTTPPathPattern("/galactica/merkle/empty_index/{registry}"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/galactica.merkle.Query/GetEmptyIndex", runtime.WithHTTPPathPattern("/v1/galactica/merkle/empty_index/{registry}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -258,7 +258,7 @@ func RegisterQueryHandlerClient(ctx context.Context, mux *runtime.ServeMux, clie
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/galactica.merkle.Query/Proof", runtime.WithHTTPPathPattern("/galactica/merkle/proof/{registry}/{leaf}"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/galactica.merkle.Query/Proof", runtime.WithHTTPPathPattern("/v1/galactica/merkle/proof/{registry}/{leaf}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -280,7 +280,7 @@ func RegisterQueryHandlerClient(ctx context.Context, mux *runtime.ServeMux, clie
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/galactica.merkle.Query/GetEmptyIndex", runtime.WithHTTPPathPattern("/galactica/merkle/empty_index/{registry}"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/galactica.merkle.Query/GetEmptyIndex", runtime.WithHTTPPathPattern("/v1/galactica/merkle/empty_index/{registry}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -300,9 +300,9 @@ func RegisterQueryHandlerClient(ctx context.Context, mux *runtime.ServeMux, clie
 }
 
 var (
-	pattern_Query_Proof_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 1, 0, 4, 1, 5, 4}, []string{"galactica", "merkle", "proof", "registry", "leaf"}, ""))
+	pattern_Query_Proof_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4, 1, 0, 4, 1, 5, 5}, []string{"v1", "galactica", "merkle", "proof", "registry", "leaf"}, ""))
 
-	pattern_Query_GetEmptyIndex_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"galactica", "merkle", "empty_index", "registry"}, ""))
+	pattern_Query_GetEmptyIndex_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"v1", "galactica", "merkle", "empty_index", "registry"}, ""))
 )
 
 var (

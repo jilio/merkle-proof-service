@@ -4,40 +4,59 @@ import "google/api/annotations.proto";
 
 package galactica.merkle;
 
-option go_package = "github.com/Galactica-corp/merkle-proof-service/x/merkle/types";
+option go_package = "github.com/Galactica-corp/merkle-proof-service/gen/galactica/merkle";
 
 // Query defines the gRPC querier service.
 service Query {
   // Proof queries the proof of a leaf in the merkle tree.
   rpc Proof (QueryProofRequest) returns (QueryProofResponse) {
-    option (google.api.http).get = "/galactica/merkle/proof/{registry}/{leaf}";
+    option (google.api.http).get = "/v1/galactica/merkle/proof/{registry}/{leaf}";
   }
 
+  // GetEmptyIndex queries the empty leaf index in the merkle tree.
   rpc GetEmptyIndex (GetEmptyIndexRequest) returns (GetEmptyIndexResponse) {
-    option (google.api.http).get = "/galactica/merkle/empty_index/{registry}";
+    option (google.api.http).get = "/v1/galactica/merkle/empty_index/{registry}";
   }
 }
 
+// QueryProofRequest is the request type for the Query.Proof method.
 message QueryProofRequest {
+  // registry  is the ZkCertificateRegistry hex address, which starts with 0x.
   string registry = 1;
+
+  // leaf is the leaf uint256 value.
   string leaf = 2;
 }
 
+// QueryProofResponse is the response type for the Query.Proof method.
 message QueryProofResponse {
+  // proof is the merkle proof.
   Proof proof = 1;
 }
 
+// GetEmptyIndexRequest is the request type for the Query.GetEmptyIndex method.
 message GetEmptyIndexRequest {
+  // registry is the ZkCertificateRegistry hex address, which starts with 0x.
   string registry = 1;
 }
 
+// GetEmptyIndexResponse is the response type for the Query.GetEmptyIndex method.
 message GetEmptyIndexResponse {
+  // index is the empty leaf index.
   uint32 index = 1;
 }
 
+// Proof is the merkle proof.
 message Proof {
+  // leaf is the leaf value encoded as a string containing the uint256 value.
   string leaf = 1;
+
+  // path is the merkle proof path, encoded as a string containing the uint256 values.
   repeated string path = 2;
+
+  // index is the leaf index.
   uint32 index = 3;
+
+  // root is the merkle root, value encoded as a string containing the uint256 value.
   string root = 4;
 }

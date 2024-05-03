@@ -28,9 +28,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/holiman/uint256"
+	"github.com/swaggest/swgui/v5cdn"
 	"google.golang.org/grpc"
 
 	merklegen "github.com/Galactica-corp/merkle-proof-service/gen/galactica/merkle"
+	merkleswagger "github.com/Galactica-corp/merkle-proof-service/gen/openapiv2/galactica/merkle"
 	"github.com/Galactica-corp/merkle-proof-service/internal/merkle"
 )
 
@@ -133,6 +135,23 @@ func (s *Server) RunGateway(ctx context.Context, address string) error {
 	)
 	if err := merklegen.RegisterQueryHandlerServer(ctx, gwmux, s); err != nil {
 		return fmt.Errorf("failed to register gRPC gateway: %v", err)
+	}
+
+	// swagger.json is served at /swagger.json
+	if err := gwmux.HandlePath("GET", "/swagger.json", func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(merkleswagger.SwaggerJson()))
+	}); err != nil {
+		return fmt.Errorf("failed to serve swagger.json: %v", err)
+	}
+
+	// Serve swagger UI at /docs
+	swaggerUIHandler := v5cdn.New("Galactica merkle proof service", "/swagger.json", "/docs/")
+	if err := gwmux.HandlePath("GET", "/docs", func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+		swaggerUIHandler.ServeHTTP(w, r)
+	}); err != nil {
+		return fmt.Errorf("failed to serve swagger UI: %v", err)
 	}
 
 	gwServer := &http.Server{

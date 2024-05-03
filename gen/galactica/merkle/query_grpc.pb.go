@@ -30,6 +30,7 @@ const (
 type QueryClient interface {
 	// Proof queries the proof of a leaf in the merkle tree.
 	Proof(ctx context.Context, in *QueryProofRequest, opts ...grpc.CallOption) (*QueryProofResponse, error)
+	// GetEmptyIndex queries the empty leaf index in the merkle tree.
 	GetEmptyIndex(ctx context.Context, in *GetEmptyIndexRequest, opts ...grpc.CallOption) (*GetEmptyIndexResponse, error)
 }
 
@@ -65,6 +66,7 @@ func (c *queryClient) GetEmptyIndex(ctx context.Context, in *GetEmptyIndexReques
 type QueryServer interface {
 	// Proof queries the proof of a leaf in the merkle tree.
 	Proof(context.Context, *QueryProofRequest) (*QueryProofResponse, error)
+	// GetEmptyIndex queries the empty leaf index in the merkle tree.
 	GetEmptyIndex(context.Context, *GetEmptyIndexRequest) (*GetEmptyIndexResponse, error)
 	mustEmbedUnimplementedQueryServer()
 }

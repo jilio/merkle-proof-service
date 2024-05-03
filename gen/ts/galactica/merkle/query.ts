@@ -1,29 +1,44 @@
 /* eslint-disable */
+// @ts-ignore
 import * as _m0 from "protobufjs/minimal";
 
 export const protobufPackage = "galactica.merkle";
 
+/** QueryProofRequest is the request type for the Query.Proof method. */
 export interface QueryProofRequest {
+  /** registry  is the ZkCertificateRegistry hex address, which starts with 0x. */
   registry: string;
+  /** leaf is the leaf uint256 value. */
   leaf: string;
 }
 
+/** QueryProofResponse is the response type for the Query.Proof method. */
 export interface QueryProofResponse {
+  /** proof is the merkle proof. */
   proof: Proof | undefined;
 }
 
+/** GetEmptyIndexRequest is the request type for the Query.GetEmptyIndex method. */
 export interface GetEmptyIndexRequest {
+  /** registry is the ZkCertificateRegistry hex address, which starts with 0x. */
   registry: string;
 }
 
+/** GetEmptyIndexResponse is the response type for the Query.GetEmptyIndex method. */
 export interface GetEmptyIndexResponse {
+  /** index is the empty leaf index. */
   index: number;
 }
 
+/** Proof is the merkle proof. */
 export interface Proof {
+  /** leaf is the leaf value encoded as a string containing the uint256 value. */
   leaf: string;
+  /** path is the merkle proof path, encoded as a string containing the uint256 values. */
   path: string[];
+  /** index is the leaf index. */
   index: number;
+  /** root is the merkle root, value encoded as a string containing the uint256 value. */
   root: string;
 }
 
@@ -380,6 +395,7 @@ export const Proof = {
 export interface Query {
   /** Proof queries the proof of a leaf in the merkle tree. */
   Proof(request: QueryProofRequest): Promise<QueryProofResponse>;
+  /** GetEmptyIndex queries the empty leaf index in the merkle tree. */
   GetEmptyIndex(request: GetEmptyIndexRequest): Promise<GetEmptyIndexResponse>;
 }
 
