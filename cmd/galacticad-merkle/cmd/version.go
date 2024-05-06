@@ -21,9 +21,15 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/debug"
+	"strings"
+
+	"github.com/spf13/cobra"
 )
 
 var (
+	// AppName is the name of the service
+	AppName = "merkle-proof-service"
+
 	// Version is the version of the service
 	Version = ""
 
@@ -64,3 +70,43 @@ func (d buildDep) String() string {
 
 func (d buildDep) MarshalJSON() ([]byte, error)      { return json.Marshal(d.String()) }
 func (d buildDep) MarshalYAML() (interface{}, error) { return d.String(), nil }
+
+func fullVersion() string {
+	// print the full version information including the build deps
+	lines := []string{
+		fmt.Sprintf("%s: %s", AppName, Version),
+		fmt.Sprintf("git commit: %s", GitCommit),
+		GoVersion,
+	}
+
+	lines = append(lines, "build deps:")
+	for _, dep := range BuildDeps {
+		lines = append(lines, "  - "+dep.String())
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// CreateVersion creates the version command
+func CreateVersion() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "version",
+		Short: "Print the version of the service",
+	}
+
+	// add --long flag
+	cmd.Flags().Bool("long", false, "Print the full version information including the build deps")
+
+	cmd.Run = func(cmd *cobra.Command, args []string) {
+		// print the version information
+		if cmd.Flag("long").Value.String() == "true" {
+			// print the full version information including the build deps
+			fmt.Println(fullVersion())
+		} else {
+			// print the short version information
+			fmt.Println(Version)
+		}
+	}
+
+	return cmd
+}

@@ -3,6 +3,8 @@ log_level: debug
 # TODO: support multiple endpoints
 evm_rpc: wss://evm-rpc-ws-reticulum.galactica.com
 
+db_backend: pebbledb
+
 grpc:
   address: localhost:50651
 

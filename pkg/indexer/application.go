@@ -38,9 +38,37 @@ const (
 
 type (
 	ApplicationConfig struct {
-		EvmRpc      string
-		DbPath      string
-		Jobs        []indexer.JobDescriptor
+		// EvmRpc is the URL of the EVM RPC. Must be a WebSocket URL.
+		EvmRpc string
+
+		// DbPath is the path to the database folder
+		DbPath string
+
+		// DbBackend Database backend: goleveldb | cleveldb | boltdb | rocksdb
+		// * goleveldb (github.com/syndtr/goleveldb - most popular implementation)
+		//   - pure go
+		//   - stable
+		// * cleveldb (uses levigo wrapper)
+		//   - fast
+		//   - requires gcc
+		//   - use cleveldb build tag (go build -tags cleveldb)
+		// * boltdb (uses etcd's fork of bolt - github.com/etcd-io/bbolt)
+		//   - EXPERIMENTAL
+		//   - may be faster is some use-cases (random reads - indexer)
+		//   - use boltdb build tag (go build -tags boltdb)
+		// * rocksdb (uses github.com/tecbot/gorocksdb)
+		//   - EXPERIMENTAL
+		//   - requires gcc
+		//   - use rocksdb build tag (go build -tags rocksdb)
+		// * badgerdb (uses github.com/dgraph-io/badger)
+		//   - EXPERIMENTAL
+		//   - use badgerdb build tag (go build -tags badgerdb)
+		DbBackend db.BackendType
+
+		// Jobs is a list of jobs that should be applied to the indexer
+		Jobs []indexer.JobDescriptor
+
+		// QueryServer is the configuration for the query server
 		QueryServer QueryServerConfig
 	}
 
@@ -140,8 +168,8 @@ func (app *Application) Init(ctx context.Context) error {
 	app.logger.Info("latest block", "number", latestBlock.Number().Uint64())
 
 	// Initialize storage
-	app.logger.Info("initializing merkle storage")
-	app.kvDB, err = db.NewGoLevelDB(dbName, app.config.DbPath)
+	app.logger.Info("initializing db", "db_backend", app.config.DbBackend, "db_path", app.config.DbPath)
+	app.kvDB, err = db.NewDB(dbName, app.config.DbBackend, app.config.DbPath)
 	if err != nil {
 		return fmt.Errorf("create storage DB: %w", err)
 	}
@@ -221,7 +249,7 @@ func (app *Application) RunIndexer(ctx context.Context) error {
 }
 
 // applyJobsToIndex applies all jobs to the index
-func (app *Application) applyJobsToIndex(ctx context.Context, jobs []indexer.JobDescriptor) error {
+func (app *Application) applyJobsToIndex(_ context.Context, jobs []indexer.JobDescriptor) error {
 	for _, job := range jobs {
 		if job.Contract != indexer.ContractZkCertificateRegistry {
 			// apply only for ZkCertificateRegistry

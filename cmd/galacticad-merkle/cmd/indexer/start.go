@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	db "github.com/cometbft/cometbft-db"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
@@ -47,6 +48,8 @@ const (
 	grpcGatewayAddressEnv   = "GRPC_GATEWAY_ADDRESS"
 
 	defaultEvmRpc = "http://localhost:8545"
+
+	dbFolder = "db"
 )
 
 func CreateStartCmd() *cobra.Command {
@@ -70,7 +73,12 @@ func CreateStartCmd() *cobra.Command {
 				return fmt.Errorf("home dir not found in context")
 			}
 
-			dbPath := filepath.Join(homeDir, "storage")
+			dbBackend, ok := cmd.Context().Value(ctx.DBBackendKey).(db.BackendType)
+			if !ok {
+				return fmt.Errorf("db backend not found in context")
+			}
+
+			dbPath := filepath.Join(homeDir, dbFolder)
 
 			jobs, err := getIndexerJobs()
 			if err != nil {
@@ -83,6 +91,7 @@ func CreateStartCmd() *cobra.Command {
 			appConfig := pkgindexer.ApplicationConfig{
 				EvmRpc:      evmRpc,
 				DbPath:      dbPath,
+				DbBackend:   dbBackend,
 				Jobs:        jobs,
 				QueryServer: getQueryServerConfig(),
 			}

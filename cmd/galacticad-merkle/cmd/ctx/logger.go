@@ -19,6 +19,7 @@ package ctx
 type Key string
 
 const (
-	LoggerKey  Key = "logger"
-	HomeDirKey Key = "home-dir"
+	LoggerKey    Key = "logger"
+	HomeDirKey   Key = "home-dir"
+	DBBackendKey Key = "db-backend"
 )
