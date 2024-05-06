@@ -47,7 +47,7 @@ const (
 	grpcGatewayAddressViper = "grpc_gateway.address"
 	grpcGatewayAddressEnv   = "GRPC_GATEWAY_ADDRESS"
 
-	defaultEvmRpc = "http://localhost:8545"
+	defaultEvmRpc = "ws://localhost:8546"
 
 	dbFolder = "db"
 )

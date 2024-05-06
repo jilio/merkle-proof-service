@@ -49,8 +49,8 @@ To run the service, you can use the built binary. Here's an example of how to st
 
 Here are the available flags for the `start` command:
 
-- `--evm-rpc string`: EVM RPC endpoint (default "http://localhost:8545")
-- `--grpc-gateway.address string`: gRPC gateway address (default "localhost:8480")
+- `--evm-rpc string`: EVM RPC endpoint (default "ws://localhost:8546")
+- `--grpc-gateway.address string`: gRPC gateway server address (default "localhost:8480")
 - `--grpc.address string`: gRPC server address (default "localhost:50651")
 
 And the global flags:
@@ -110,7 +110,7 @@ The Merkle Proof Service can be configured using a YAML file. By default, the co
 Here is an example of the configuration file:
 
 ```yaml
-log_level: debug
+log_level: info
 evm_rpc: wss://evm-rpc-ws-reticulum.galactica.com
 db_backend: pebbledb
 grpc:
