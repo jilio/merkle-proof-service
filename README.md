@@ -120,6 +120,29 @@ The Merkle Proof Service can be configured using environment variables. The foll
 - `GRPC_ADDRESS` - gRPC server address (default `localhost:50651`)
 - `GRPC_GATEWAY_ADDRESS` - gRPC gateway server address (default `localhost:8480`)
 
+## Docker
+
+The Merkle Proof Service can be run in a Docker container. To build the Docker image, execute the following command:
+
+```bash
+make docker-build DB_BACKEND=pebbledb
+```
+
+To run the Docker container, execute the following command:
+
+```bash
+docker run -d \
+  --name merkle-proof-service \
+  -p 50651:50651 \
+  -p 8480:8480 \
+  -e EVM_RPC=wss://evm-rpc-ws-reticulum.galactica.com \
+  -e DB_BACKEND=pebbledb \
+  -v $HOME/.galacticad-merkle:/root/.galacticad-merkle \
+   Galactica-corp/merkle-proof-service
+```
+
+This command will start the Merkle Proof Service in a Docker container with the default configuration. You can customize the configuration by passing environment variables to the `docker run` command.
+
 ## License
 
 The Merkle Proof Service is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the full license text.
