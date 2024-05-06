@@ -44,7 +44,7 @@ For testing purposes, the `memdb` backend is recommended. This backend stores da
 To run the service, you can use the built binary. Here's an example of how to start the indexer with a specified EVM RPC endpoint:
 
 ```bash
-./build/galacticad-merkle indexer start --evm-rpc http://localhost:8545
+./build/galacticad-merkle indexer start --evm-rpc ws://localhost:8546
 ```
 
 Here are the available flags for the `start` command:
