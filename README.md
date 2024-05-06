@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/Galactica-corp/merkle-proof-service)](https://github.com/Galactica-corp/merkle-proof-service/releases)
 
-The Merkle Proof Service is an advanced utility engineered to facilitate the indexing of Merkle trees derived from Ethereum Solidity contracts. It further provides a sophisticated API, enabling the retrieval of Merkle proofs, inclusive of root and path details. The service is equipped with two distinct API interfaces: gRPC and gRPC-gateway, the latter being an implementation of OpenAPI v2.
+The Merkle Proof Service is an advanced utility engineered to facilitate the indexing of Merkle trees derived from Ethereum Solidity contracts. It further provides an API, enabling the retrieval of Merkle proofs, inclusive of root and path details. The service is equipped with two distinct API interfaces: gRPC and gRPC-gateway, the latter being an implementation of OpenAPI v2.
 
 
 ## Building the Executable
