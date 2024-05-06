@@ -1,0 +1,168 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "galactica/merkle/query.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "Query"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/v1/galactica/merkle/empty_index/{registry}": {
+      "get": {
+        "summary": "GetEmptyIndex queries the empty leaf index in the merkle tree.",
+        "operationId": "GetEmptyIndex",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/galactica.merkle.GetEmptyIndexResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/google.rpc.Status"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "registry",
+            "description": "registry is the ZkCertificateRegistry hex address, which starts with 0x.",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Query"
+        ]
+      }
+    },
+    "/v1/galactica/merkle/proof/{registry}/{leaf}": {
+      "get": {
+        "summary": "Proof queries the proof of a leaf in the merkle tree.",
+        "operationId": "Proof",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/galactica.merkle.QueryProofResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/google.rpc.Status"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "registry",
+            "description": "registry  is the ZkCertificateRegistry hex address, which starts with 0x.",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "leaf",
+            "description": "leaf is the leaf uint256 value.",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Query"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "galactica.merkle.GetEmptyIndexResponse": {
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer",
+          "format": "int64",
+          "description": "index is the empty leaf index."
+        }
+      },
+      "description": "GetEmptyIndexResponse is the response type for the Query.GetEmptyIndex method."
+    },
+    "galactica.merkle.Proof": {
+      "type": "object",
+      "properties": {
+        "leaf": {
+          "type": "string",
+          "description": "leaf is the leaf value encoded as a string containing the uint256 value."
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "path is the merkle proof path, encoded as a string containing the uint256 values."
+        },
+        "index": {
+          "type": "integer",
+          "format": "int64",
+          "description": "index is the leaf index."
+        },
+        "root": {
+          "type": "string",
+          "description": "root is the merkle root, value encoded as a string containing the uint256 value."
+        }
+      },
+      "description": "Proof is the merkle proof."
+    },
+    "galactica.merkle.QueryProofResponse": {
+      "type": "object",
+      "properties": {
+        "proof": {
+          "$ref": "#/definitions/galactica.merkle.Proof",
+          "description": "proof is the merkle proof."
+        }
+      },
+      "description": "QueryProofResponse is the response type for the Query.Proof method."
+    },
+    "google.protobuf.Any": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "google.rpc.Status": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/google.protobuf.Any"
+          }
+        }
+      }
+    }
+  }
+}

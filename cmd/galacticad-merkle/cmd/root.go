@@ -21,25 +21,32 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"slices"
 
+	db "github.com/cometbft/cometbft-db"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"github.com/Galactica-corp/merkle-proof-service/cmd/galacticad-merkle/cmd/ctx"
 	"github.com/Galactica-corp/merkle-proof-service/cmd/galacticad-merkle/cmd/indexer"
-	"github.com/Galactica-corp/merkle-proof-service/internal/viperhelper"
+	"github.com/Galactica-corp/merkle-proof-service/internal/utils"
 )
 
 const (
-	EnvPrefix = "GALACTICA"
+	FlagHome  = "home"
+	EnvHome   = "GALACTICA_HOME"
+	ViperHome = "home"
 
-	FlagHome   = "home"
-	FlagConfig = "config"
+	FlagConfig  = "config"
+	EnvConfig   = "MERKLE_CONFIG"
+	ViperConfig = "config"
 
-	EnvHome   = "HOME"
-	EnvConfig = "CONFIG"
+	FlagDBBackend  = "db-backend"
+	EvnDBBackend   = "DB_BACKEND"
+	ViperDBBackend = "db_backend"
 
 	FlagLogLevel    = "log-level"
 	EvnLogLevel     = "LOG_LEVEL"
@@ -51,9 +58,10 @@ const (
 )
 
 type Config struct {
-	Home     string
-	Config   string
-	LogLevel string
+	Home      string
+	Config    string
+	LogLevel  string
+	DBBackend db.BackendType
 }
 
 func createRootCmd() *cobra.Command {
@@ -62,70 +70,87 @@ func createRootCmd() *cobra.Command {
 		Short: "Galactica Network merkle cli",
 		Long: `Galactica Network merkle cli. 
 This is a CLI tool to interact with the Galactica Network merkle service.`,
-		Version: Version + " (" + GitCommit + ")",
 	}
 }
 
 func Execute() {
-	rootCtx, cancel := context.WithCancel(context.Background())
+	rootCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
 	rootCmd := initRootCmd(createRootCmd())
-
 	if err := rootCmd.ExecuteContext(rootCtx); err != nil {
 		fmt.Println(err)
-		os.Exit(1)
 	}
 }
 
 func initRootCmd(rootCmd *cobra.Command) *cobra.Command {
 	cfg := Config{}
 
-	viper.SetEnvPrefix(EnvPrefix)
-	viper.AutomaticEnv()
-
 	// root command flags
-	rootCmd.PersistentFlags().StringVar(&cfg.Home, FlagHome, "", "home directory (default is $HOME/"+DefaultHomeSubDir+")")
-	rootCmd.PersistentFlags().StringVar(&cfg.Config, FlagConfig, "", "config file (default is $HOME/"+DefaultHomeSubDir+"/"+DefaultConfigFileName+")")
-	rootCmd.PersistentFlags().StringVar(&cfg.LogLevel, FlagLogLevel, DefaultLogLevel, "log level, available options: [debug, info, error, none]")
+	rootCmd.PersistentFlags().StringVar(
+		&cfg.Home,
+		FlagHome,
+		"",
+		"home directory (default is $HOME/"+DefaultHomeSubDir+")",
+	)
+	rootCmd.PersistentFlags().StringVar(
+		&cfg.Config,
+		FlagConfig,
+		"",
+		"config file (default is $HOME/"+DefaultHomeSubDir+"/"+DefaultConfigFileName+")",
+	)
+	rootCmd.PersistentFlags().StringVar(
+		&cfg.LogLevel,
+		FlagLogLevel,
+		DefaultLogLevel,
+		"log level, available options: [debug, info, error, none]",
+	)
+	rootCmd.PersistentFlags().String(
+		FlagDBBackend,
+		string(db.GoLevelDBBackend),
+		"database backend, available options: "+dbBackendsString(),
+	)
 
 	// bind flags to viper
-	viperhelper.MustBindPFlag(viper.GetViper(), ViperLogLevel, rootCmd.PersistentFlags().Lookup(FlagLogLevel))
+	utils.MustBindPFlag(viper.GetViper(), ViperHome, rootCmd.PersistentFlags().Lookup(FlagHome))
+	utils.MustBindPFlag(viper.GetViper(), ViperConfig, rootCmd.PersistentFlags().Lookup(FlagConfig))
+	utils.MustBindPFlag(viper.GetViper(), ViperLogLevel, rootCmd.PersistentFlags().Lookup(FlagLogLevel))
+	utils.MustBindPFlag(viper.GetViper(), ViperDBBackend, rootCmd.PersistentFlags().Lookup(FlagDBBackend))
 
 	// bind env variables to viper
-	viper.MustBindEnv(FlagHome, EnvHome)
-	viper.MustBindEnv(FlagConfig, EnvConfig)
-	viper.MustBindEnv(FlagLogLevel, EvnLogLevel)
+	viper.MustBindEnv(ViperHome, EnvHome)
+	viper.MustBindEnv(ViperConfig, EnvConfig)
+	viper.MustBindEnv(ViperLogLevel, EvnLogLevel)
+	viper.MustBindEnv(ViperDBBackend, EvnDBBackend)
 
 	// init config
-	if initedCfg, err := initConfig(cfg); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	} else {
-		cfg = initedCfg
-	}
-
-	// init logger
-	writer := log.NewSyncWriter(os.Stdout)
-	logger := initLogger(cfg.LogLevel, writer)
 
 	// set logger to root command
+	writer := log.NewSyncWriter(os.Stdout)
 	rootCmd.SetOut(writer)
 	rootCmd.SetErr(writer)
+
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		if initedCfg, err := initConfig(cfg); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		} else {
+			cfg = initedCfg
+		}
+
+		// init logger
+		logger := initLogger(cfg.LogLevel, writer)
+
 		cmd.SetContext(context.WithValue(cmd.Context(), ctx.LoggerKey, logger))
 		cmd.SetContext(context.WithValue(cmd.Context(), ctx.HomeDirKey, cfg.Home))
-
-		logger.Info(
-			"initialize galacticad-merkle service",
-			"home", cfg.Home,
-			"config", cfg.Config,
-			"log_level", cfg.LogLevel,
-		)
+		cmd.SetContext(context.WithValue(cmd.Context(), ctx.DBBackendKey, cfg.DBBackend))
 	}
 
 	// add subcommands
 	rootCmd.AddCommand(indexer.CreateIndexerCmd())
+
+	// add version command
+	rootCmd.AddCommand(CreateVersion())
 
 	return rootCmd
 }
@@ -171,11 +196,38 @@ func initConfig(cfg Config) (Config, error) {
 	viper.SetConfigFile(cfg.Config)
 
 	if err := viper.ReadInConfig(); err != nil {
-		return cfg, fmt.Errorf("failed to read config file: %w", err)
+		// no need to return error if config file not found
 	}
 
 	// set log level
 	cfg.LogLevel = viper.GetString(ViperLogLevel)
 
+	// set db backend
+	cfg.DBBackend = db.BackendType(viper.GetString(ViperDBBackend))
+	if !slices.Contains(availableDBBackends(), cfg.DBBackend) {
+		return cfg, fmt.Errorf("invalid db backend %s, expected one of %s", cfg.DBBackend, dbBackendsString())
+	}
+
 	return cfg, nil
+}
+
+func availableDBBackends() []db.BackendType {
+	return []db.BackendType{
+		db.GoLevelDBBackend,
+		db.CLevelDBBackend,
+		db.MemDBBackend,
+		db.BoltDBBackend,
+		db.RocksDBBackend,
+		db.BadgerDBBackend,
+		db.PebbleDBBackend,
+	}
+}
+
+func dbBackendsString() string {
+	backends := availableDBBackends()
+	strs := make([]string, 0, len(backends))
+	for _, backend := range backends {
+		strs = append(strs, string(backend))
+	}
+	return fmt.Sprintf("[%s]", filepath.Join(strs...))
 }

@@ -14,12 +14,15 @@
  * limitations under the License.
  */
 
-package ctx
+package utils
 
-type Key string
-
-const (
-	LoggerKey    Key = "logger"
-	HomeDirKey   Key = "home-dir"
-	DBBackendKey Key = "db-backend"
+import (
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 )
+
+func MustBindPFlag(v *viper.Viper, key string, flag *pflag.Flag) {
+	if err := v.BindPFlag(key, flag); err != nil {
+		panic(err)
+	}
+}

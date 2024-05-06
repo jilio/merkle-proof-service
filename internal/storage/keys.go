@@ -14,4 +14,17 @@
  * limitations under the License.
  */
 
-package contract
+package storage
+
+const (
+	PrefixLength = 1
+)
+
+var (
+	JobKeyPrefix              = byte(0x00)
+	MerkleTreeLeafKeyPrefix   = byte(0x01)
+	MerkleTreeLeafIndexPrefix = byte(0x02)
+
+	MerkleTreeAddressIndexPrefix        = byte(0x03)
+	MerkleTreeAddressIndexCounterPrefix = byte(0x04)
+)

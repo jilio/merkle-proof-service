@@ -14,15 +14,15 @@
  * limitations under the License.
  */
 
-package viperhelper
+package merkle
 
 import (
-	"github.com/spf13/pflag"
-	"github.com/spf13/viper"
+	_ "embed"
 )
 
-func MustBindPFlag(v *viper.Viper, key string, flag *pflag.Flag) {
-	if err := v.BindPFlag(key, flag); err != nil {
-		panic(err)
-	}
+//go:embed query.swagger.json
+var swaggerJson string
+
+func SwaggerJson() string {
+	return swaggerJson
 }
