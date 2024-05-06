@@ -65,43 +65,23 @@ And the global flags:
 
 The Merkle Proof Service provides two distinct API interfaces: `gRPC` and `gRPC-gateway`. The `gRPC-gateway` interface is an implementation of `OpenAPI v2`, which allows for the generation of client libraries in various programming languages.
 
-### gRPC-gateway
-
-By default, the `gRPC-gateway` interface is available at `http://localhost:8480`. The OpenAPI v2 specification can be accessed at `http://localhost:8480/swagger.json` and documentation can be viewed at `http://localhost:8480/docs`.
-
-You can change the address of the `gRPC-gateway` address by several ways:
-
-- Pass the `--grpc-gateway.address` flag to the `start` command
-- Set the `GRPC_GATEWAY_ADDRESS` environment variable
-- Change the address in the configuration YAML file:
-   ```yaml
-   grpc_gateway:
-     address: localhost:8480
-   ```
-
-The service provides the following endpoints:
-
-- `GET /v1/galactica/merkle/proof/{registry}/{leaf}`: Retrieves the Merkle proof for a given contract address and leaf index.
-- `GET /v1/galactica/merkle/empty_index/{registry}`: Retrieves the random empty index for a given contract address.
-
 ### gRPC
 
 The `gRPC` interface is available at `http://localhost:50651`. You cain find the gRPC query server definition in the following file: [proto/galactica/merkle/query.proto](proto/galactica/merkle/query.proto).
 
 The service provides the following methods:
 
-- `Proof`: Retrieves the Merkle proof for a given contract address and leaf index. 
+- `Proof`: Retrieves the Merkle proof for a given contract address and leaf index.
 - `GetEmptyIndex`: Retrieves the random empty index for a given contract address.
 
-You can change the address of the `gRPC` server by several ways:
+### gRPC-gateway
 
-- Pass the `--grpc.address` flag to the `start` command
-- Set the `GRPC_ADDRESS` environment variable
-- Change the address in the configuration YAML file:
-   ```yaml
-   grpc:
-     address: localhost:50651
-   ```
+By default, the `gRPC-gateway` interface is available at `http://localhost:8480`. The OpenAPI v2 specification can be accessed at `http://localhost:8480/swagger.json` and documentation can be viewed at `http://localhost:8480/docs`.
+
+The service provides the following endpoints:
+
+- `GET /v1/galactica/merkle/proof/{registry}/{leaf}`: Retrieves the Merkle proof for a given contract address and leaf index.
+- `GET /v1/galactica/merkle/empty_index/{registry}`: Retrieves the random empty index for a given contract address.
 
 ## Configuration
 
@@ -128,6 +108,17 @@ jobs:
 The `jobs` section of the configuration file is used to specify the Ethereum contract addresses and the corresponding Solidity contract names. The `start_block` parameter is used to specify the block number from which the indexer should start indexing the contract events. 
 
 You can add multiple jobs to the configuration file to index multiple contracts. 
+
+### Environment variables
+
+The Merkle Proof Service can be configured using environment variables. The following environment variables can be used to configure the service:
+
+- `MERKLE_HOME` - home directory to store data (default is `$HOME/.galacticad-merkle`)
+- `MERKLE_CONFIG` - config file (default is `$HOME/.galacticad-merkle/merkle.yaml`)
+- `DB_BACKEND` - database backend, available options: `goleveldb` (default), `cleveldb`, `memdb`, `boltdb`, `rocksdb`, `badgerdb`, `pebbledb`
+- `EVM_RPC` - EVM RPC endpoint (default `ws://localhost:8546`)
+- `GRPC_ADDRESS` - gRPC server address (default `localhost:50651`)
+- `GRPC_GATEWAY_ADDRESS` - gRPC gateway server address (default `localhost:8480`)
 
 ## License
 

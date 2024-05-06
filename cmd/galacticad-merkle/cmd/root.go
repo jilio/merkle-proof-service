@@ -37,7 +37,7 @@ import (
 
 const (
 	FlagHome  = "home"
-	EnvHome   = "GALACTICA_HOME"
+	EnvHome   = "MERKLE_HOME"
 	ViperHome = "home"
 
 	FlagConfig  = "config"
