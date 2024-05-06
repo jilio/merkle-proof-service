@@ -17,8 +17,8 @@
 package indexer
 
 const (
-	ContractKYCRecordRegistry       Contract = 1
-	ContractKYCRecordRegistryString string   = "KYCRecordRegistry"
+	ContractZkCertificateRegistry       Contract = 1
+	ContractZkCertificateRegistryString string   = "ZkCertificateRegistry"
 
 	ContractTypeLength = 1
 )
@@ -35,8 +35,8 @@ func ContractFromString(s string) (Contract, error) {
 
 func (s Contract) String() string {
 	switch s {
-	case ContractKYCRecordRegistry:
-		return ContractKYCRecordRegistryString
+	case ContractZkCertificateRegistry:
+		return ContractZkCertificateRegistryString
 	default:
 		return "unknown"
 	}
@@ -44,8 +44,8 @@ func (s Contract) String() string {
 
 func (s *Contract) UnmarshalText(text []byte) error {
 	switch string(text) {
-	case ContractKYCRecordRegistryString:
-		*s = ContractKYCRecordRegistry
+	case ContractZkCertificateRegistryString:
+		*s = ContractZkCertificateRegistry
 	default:
 		*s = 0
 	}

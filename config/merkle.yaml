@@ -11,5 +11,5 @@ grpc_gateway:
 
 jobs:
   - address: 0x85032c035494324f62A5AfE2507d5427dFd72e76
-    contract: KYCRecordRegistry
+    contract: ZkCertificateRegistry
     start_block: 7996

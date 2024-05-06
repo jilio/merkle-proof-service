@@ -151,7 +151,7 @@ func (app *Application) Init(ctx context.Context) error {
 	app.treeFactory = merkle.NewTreeFactoryWithCache(merkle.TreeDepth, merkle.EmptyLeafValue, app.treeIndexStorage)
 	app.treeMutex = merkle.NewTreeMutex()
 
-	// Apply all KYC Registry addresses to the index
+	// Apply all ZK Registry addresses to the index
 	if err := app.applyJobsToIndex(ctx, app.config.Jobs); err != nil {
 		return fmt.Errorf("apply jobs to index: %w", err)
 	}
@@ -223,8 +223,8 @@ func (app *Application) RunIndexer(ctx context.Context) error {
 // applyJobsToIndex applies all jobs to the index
 func (app *Application) applyJobsToIndex(ctx context.Context, jobs []indexer.JobDescriptor) error {
 	for _, job := range jobs {
-		if job.Contract != indexer.ContractKYCRecordRegistry {
-			// apply only for KYCRecordRegistry
+		if job.Contract != indexer.ContractZkCertificateRegistry {
+			// apply only for ZkCertificateRegistry
 			continue
 		}
 

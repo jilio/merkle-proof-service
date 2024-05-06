@@ -29,13 +29,13 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
 
-	"github.com/Galactica-corp/merkle-proof-service/internal/contract/KYCRecordRegistry"
+	"github.com/Galactica-corp/merkle-proof-service/internal/contract/ZkCertificateRegistry"
 	"github.com/Galactica-corp/merkle-proof-service/internal/merkle"
 )
 
 const (
-	eventRecordAddition   = "zkKYCRecordAddition"
-	eventRecordRevocation = "zkKYCRecordRevocation"
+	eventZKCertificateAddition   = "zkCertificateAddition"
+	eventZKCertificateRevocation = "zkCertificateRevocation"
 
 	ctxLeavesBufferKey ctxKey = "leaves_buffer"
 )
@@ -61,7 +61,7 @@ type (
 		TreeIndex merkle.TreeIndex
 	}
 
-	KYCRecordRegistryJob struct {
+	ZkCertificateRegistryJob struct {
 		jobDescriptor JobDescriptorWithTreeIndex
 		jobUpdater    JobUpdater
 		batchCreator  DBBatchCreator
@@ -71,11 +71,11 @@ type (
 		treeMutex  TreeMutex
 
 		logger log.Logger
-		parser *KYCRecordRegistry.KYCRecordRegistryFilterer
+		parser *ZkCertificateRegistry.ZkCertificateRegistryFilterer
 	}
 )
 
-func NewKYCRecordRegistryJob(
+func NewZkCertificateRegistry(
 	jobDescriptor JobDescriptorWithTreeIndex,
 	jobUpdater JobUpdater,
 	dbBatchCreator DBBatchCreator,
@@ -83,8 +83,8 @@ func NewKYCRecordRegistryJob(
 	leafIndex LeafIndexSetter,
 	treeMutex TreeMutex,
 	logger log.Logger,
-) *KYCRecordRegistryJob {
-	return &KYCRecordRegistryJob{
+) *ZkCertificateRegistryJob {
+	return &ZkCertificateRegistryJob{
 		jobDescriptor: jobDescriptor,
 		jobUpdater:    jobUpdater,
 		batchCreator:  dbBatchCreator,
@@ -96,13 +96,13 @@ func NewKYCRecordRegistryJob(
 }
 
 // PrepareContext prepares the context for the job.
-func (job *KYCRecordRegistryJob) PrepareContext(ctx context.Context) (context.Context, error) {
+func (job *ZkCertificateRegistryJob) PrepareContext(ctx context.Context) (context.Context, error) {
 	return WithLeavesBuffer(ctx, merkle.NewLeavesBuffer()), nil
 }
 
 // HandleEVMLog handles the EVM log and updates the leaves buffer.
-func (job *KYCRecordRegistryJob) HandleEVMLog(ctx context.Context, log types.Log) error {
-	contractABI, err := KYCRecordRegistry.KYCRecordRegistryMetaData.GetAbi()
+func (job *ZkCertificateRegistryJob) HandleEVMLog(ctx context.Context, log types.Log) error {
+	contractABI, err := ZkCertificateRegistry.ZkCertificateRegistryMetaData.GetAbi()
 	if err != nil {
 		return fmt.Errorf("get abi: %w", err)
 	}
@@ -114,14 +114,14 @@ func (job *KYCRecordRegistryJob) HandleEVMLog(ctx context.Context, log types.Log
 	}
 
 	switch log.Topics[0] {
-	case contractABI.Events[eventRecordAddition].ID:
-		if err := job.handleZKKYCRecordAdditionLog(ctx, log); err != nil {
-			return fmt.Errorf("handle zkKYCRecordAddition log: %w", err)
+	case contractABI.Events[eventZKCertificateAddition].ID:
+		if err := job.handleZkCertificateAdditionLog(ctx, log); err != nil {
+			return fmt.Errorf("handle ZkCertificateAddition log: %w", err)
 		}
 
-	case contractABI.Events[eventRecordRevocation].ID:
-		if err := job.handleZKKYCRecordRevocationLog(ctx, log); err != nil {
-			return fmt.Errorf("handle zkKYCRecordRevocation log: %w", err)
+	case contractABI.Events[eventZKCertificateRevocation].ID:
+		if err := job.handleZkCertificateRevocationLog(ctx, log); err != nil {
+			return fmt.Errorf("handle ZkCertificateRevocation log: %w", err)
 		}
 
 	default:
@@ -132,7 +132,7 @@ func (job *KYCRecordRegistryJob) HandleEVMLog(ctx context.Context, log types.Log
 }
 
 // Commit commits the leaves buffer to the merkle tree and the database.
-func (job *KYCRecordRegistryJob) Commit(ctx context.Context, block uint64) error {
+func (job *ZkCertificateRegistryJob) Commit(ctx context.Context, block uint64) error {
 	leavesBuffer, ok := LeavesBufferFromContext(ctx)
 	if !ok {
 		return fmt.Errorf("leaves buffer not found in context")
@@ -184,7 +184,7 @@ func (job *KYCRecordRegistryJob) Commit(ctx context.Context, block uint64) error
 }
 
 // writeBatchWithLock writes the batch to the database with a lock on the tree index.
-func (job *KYCRecordRegistryJob) writeBatchWithLock(batch db.Batch) error {
+func (job *ZkCertificateRegistryJob) writeBatchWithLock(batch db.Batch) error {
 	// we need to lock the tree index to prevent reading the tree while it is being updated
 	job.treeMutex.Lock(job.jobDescriptor.TreeIndex)
 	defer job.treeMutex.Unlock(job.jobDescriptor.TreeIndex)
@@ -193,16 +193,16 @@ func (job *KYCRecordRegistryJob) writeBatchWithLock(batch db.Batch) error {
 }
 
 // FilterQuery returns the filter query for the job to listen to the contract events.
-func (job *KYCRecordRegistryJob) FilterQuery() (ethereum.FilterQuery, error) {
-	contractABI, err := KYCRecordRegistry.KYCRecordRegistryMetaData.GetAbi()
+func (job *ZkCertificateRegistryJob) FilterQuery() (ethereum.FilterQuery, error) {
+	contractABI, err := ZkCertificateRegistry.ZkCertificateRegistryMetaData.GetAbi()
 	if err != nil {
 		return ethereum.FilterQuery{}, fmt.Errorf("get abi: %w", err)
 	}
 
 	topics, err := abi.MakeTopics(
 		[]interface{}{
-			contractABI.Events[eventRecordAddition].ID,
-			contractABI.Events[eventRecordRevocation].ID,
+			contractABI.Events[eventZKCertificateAddition].ID,
+			contractABI.Events[eventZKCertificateRevocation].ID,
 		},
 	)
 	if err != nil {
@@ -217,30 +217,30 @@ func (job *KYCRecordRegistryJob) FilterQuery() (ethereum.FilterQuery, error) {
 	return query, nil
 }
 
-// handleZKKYCRecordAdditionLog handles the zkKYCRecordAddition log and updates the leaves buffer.
-func (job *KYCRecordRegistryJob) handleZKKYCRecordAdditionLog(ctx context.Context, log types.Log) error {
+// handleZkCertificateAdditionLog handles the zkKYCRecordAddition log and updates the leaves buffer.
+func (job *ZkCertificateRegistryJob) handleZkCertificateAdditionLog(ctx context.Context, log types.Log) error {
 	parser, err := job.getParserLazy()
 	if err != nil {
 		return fmt.Errorf("get parser: %w", err)
 	}
 
-	zkKYCRecordAddition, err := parser.ParseZkKYCRecordAddition(log)
+	zkCertificateAddition, err := parser.ParseZkCertificateAddition(log)
 	if err != nil {
-		return fmt.Errorf("parse zkKYCRecordAddition: %w", err)
+		return fmt.Errorf("parse zkCertificateAddition: %w", err)
 	}
 
-	//guardianAddress := zkKYCRecordAddition.Guardian
+	//guardianAddress := zkCertificateAddition.Guardian
 	// TODO: save guardian address to the database?
 
-	indexU64 := zkKYCRecordAddition.Index.Uint64()
+	indexU64 := zkCertificateAddition.Index.Uint64()
 	if indexU64 >= merkle.MaxLeaves {
-		return fmt.Errorf("zkKYCRecordAddition: index %d is out of bounds", indexU64)
+		return fmt.Errorf("zkCertificateAddition: index %d is out of bounds", indexU64)
 	}
 
 	index := merkle.LeafIndex(indexU64)
-	leaf, overflow := uint256.FromBig(new(big.Int).SetBytes(zkKYCRecordAddition.ZkKYCRecordLeafHash[:]))
+	leaf, overflow := uint256.FromBig(new(big.Int).SetBytes(zkCertificateAddition.ZkCertificateLeafHash[:]))
 	if overflow {
-		return fmt.Errorf("zkKYCRecordAddition: leaf hash overflow for index %d", index)
+		return fmt.Errorf("zkCertificateAddition: leaf hash overflow for index %d", index)
 	}
 
 	leavesBuffer, ok := LeavesBufferFromContext(ctx)
@@ -252,21 +252,21 @@ func (job *KYCRecordRegistryJob) handleZKKYCRecordAdditionLog(ctx context.Contex
 		return fmt.Errorf("append leaf to buffer: %w", err)
 	}
 
-	job.logger.Info("found zkKYCRecordAddition", "index", index, "value", leaf.String())
+	job.logger.Info("found zkCertificateAddition", "index", index, "value", leaf.String())
 
 	return nil
 }
 
-// handleZKKYCRecordRevocationLog handles the zkKYCRecordRevocation log and updates the leaves buffer.
-func (job *KYCRecordRegistryJob) handleZKKYCRecordRevocationLog(ctx context.Context, log types.Log) error {
+// handleZkCertificateRevocationLog handles the ZkCertificateRevocation log and updates the leaves buffer.
+func (job *ZkCertificateRegistryJob) handleZkCertificateRevocationLog(ctx context.Context, log types.Log) error {
 	parser, err := job.getParserLazy()
 	if err != nil {
 		return fmt.Errorf("get parser: %w", err)
 	}
 
-	zkKYCRecordRevocation, err := parser.ParseZkKYCRecordRevocation(log)
+	zkKYCRecordRevocation, err := parser.ParseZkCertificateRevocation(log)
 	if err != nil {
-		return fmt.Errorf("parse zkKYCRecordRevocation: %w", err)
+		return fmt.Errorf("parse ZkCertificateRevocation: %w", err)
 	}
 
 	indexU64 := zkKYCRecordRevocation.Index.Uint64()
@@ -275,9 +275,9 @@ func (job *KYCRecordRegistryJob) handleZKKYCRecordRevocationLog(ctx context.Cont
 	}
 
 	index := merkle.LeafIndex(indexU64)
-	leaf, overflow := uint256.FromBig(new(big.Int).SetBytes(zkKYCRecordRevocation.ZkKYCRecordLeafHash[:]))
+	leaf, overflow := uint256.FromBig(new(big.Int).SetBytes(zkKYCRecordRevocation.ZkCertificateLeafHash[:]))
 	if overflow {
-		return fmt.Errorf("zkKYCRecordRevocation: leaf hash overflow for index %d", index)
+		return fmt.Errorf("ZkCertificateRevocation: leaf hash overflow for index %d", index)
 	}
 
 	leavesBuffer, ok := LeavesBufferFromContext(ctx)
@@ -289,18 +289,18 @@ func (job *KYCRecordRegistryJob) handleZKKYCRecordRevocationLog(ctx context.Cont
 		return fmt.Errorf("append leaf to buffer: %w", err)
 	}
 
-	job.logger.Info("found zkKYCRecordRevocation", "index", index)
+	job.logger.Info("found ZkCertificateRevocation", "index", index)
 
 	return nil
 }
 
 // getParserLazy returns the parser for the contract events.
-func (job *KYCRecordRegistryJob) getParserLazy() (*KYCRecordRegistry.KYCRecordRegistryFilterer, error) {
+func (job *ZkCertificateRegistryJob) getParserLazy() (*ZkCertificateRegistry.ZkCertificateRegistryFilterer, error) {
 	if job.parser != nil {
 		return job.parser, nil
 	}
 
-	parser, err := KYCRecordRegistry.NewKYCRecordRegistryFilterer(job.jobDescriptor.Address, nil)
+	parser, err := ZkCertificateRegistry.NewZkCertificateRegistryFilterer(job.jobDescriptor.Address, nil)
 	if err != nil {
 		return nil, fmt.Errorf("bind contract: %w", err)
 	}

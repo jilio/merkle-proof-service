@@ -33,7 +33,7 @@ func TestJobStorage_UpsertJob(t *testing.T) {
 	job := Job{
 		JobDescriptor: JobDescriptor{
 			Address:    common.HexToAddress("0x0000000000000000000000000000000000000001"),
-			Contract:   ContractKYCRecordRegistry,
+			Contract:   ContractZkCertificateRegistry,
 			StartBlock: 10,
 		},
 		CurrentBlock: 11,
@@ -60,7 +60,7 @@ func TestJobStorage_UpsertMultipleJobsWithSameAddressAndContract(t *testing.T) {
 	job1 := Job{
 		JobDescriptor: JobDescriptor{
 			Address:    common.HexToAddress("0x0000000000000000000000000000000000000001"),
-			Contract:   ContractKYCRecordRegistry,
+			Contract:   ContractZkCertificateRegistry,
 			StartBlock: 10,
 		},
 		CurrentBlock: 11,
@@ -69,7 +69,7 @@ func TestJobStorage_UpsertMultipleJobsWithSameAddressAndContract(t *testing.T) {
 	job2 := Job{
 		JobDescriptor: JobDescriptor{
 			Address:    common.HexToAddress("0x0000000000000000000000000000000000000001"),
-			Contract:   ContractKYCRecordRegistry,
+			Contract:   ContractZkCertificateRegistry,
 			StartBlock: 15,
 		},
 		CurrentBlock: 15,
@@ -100,7 +100,7 @@ func TestJobStorage_DeleteJob(t *testing.T) {
 	job1 := Job{
 		JobDescriptor: JobDescriptor{
 			Address:    common.HexToAddress("0x0000000000000000000000000000000000000001"),
-			Contract:   ContractKYCRecordRegistry,
+			Contract:   ContractZkCertificateRegistry,
 			StartBlock: 10,
 		},
 		CurrentBlock: 11,
@@ -109,7 +109,7 @@ func TestJobStorage_DeleteJob(t *testing.T) {
 	job2 := Job{
 		JobDescriptor: JobDescriptor{
 			Address:    common.HexToAddress("0x0000000000000000000000000000000000000002"),
-			Contract:   ContractKYCRecordRegistry,
+			Contract:   ContractZkCertificateRegistry,
 			StartBlock: 10,
 		},
 		CurrentBlock: 11,

@@ -117,10 +117,10 @@ func NewSparseTree(
 // The hash of parent nodes is calculated only once after all leaves have been inserted.
 // This function optimizes the process by only updating the branches of the tree that are affected by the newly inserted leaves.
 // This significantly reduces the number of hash calculations and improves performance.
-func (t *SparseTree) InsertLeaves(store TreeLeafGetterSetter, leaves []Leaf) error {
-	// Insert all leaves at once to the store.
+func (t *SparseTree) InsertLeaves(batch TreeLeafGetterSetter, leaves []Leaf) error {
+	// Insert all leaves at once to the batch.
 	for _, leaf := range leaves {
-		if err := store.SetLeaf(0, leaf.Index, leaf.Value); err != nil {
+		if err := batch.SetLeaf(0, leaf.Index, leaf.Value); err != nil {
 			return fmt.Errorf("set leaf: %w", err)
 		}
 	}
@@ -135,12 +135,12 @@ func (t *SparseTree) InsertLeaves(store TreeLeafGetterSetter, leaves []Leaf) err
 				continue
 			}
 
-			nodeHash, err := t.calculateHashForNode(store, level, leaf.Index)
+			nodeHash, err := t.calculateHashForNode(batch, level, leaf.Index)
 			if err != nil {
 				return fmt.Errorf("compute node hash: %w", err)
 			}
 
-			if err := store.SetLeaf(level+1, index, nodeHash); err != nil {
+			if err := batch.SetLeaf(level+1, index, nodeHash); err != nil {
 				return fmt.Errorf("set node: %w", err)
 			}
 
@@ -157,20 +157,20 @@ func (t *SparseTree) InsertLeaves(store TreeLeafGetterSetter, leaves []Leaf) err
 }
 
 // InsertLeaf inserts a Leaf into the SparseTree at a specified index.
-func (t *SparseTree) InsertLeaf(store TreeLeafGetterSetter, index LeafIndex, value *uint256.Int) error {
-	if err := store.SetLeaf(0, index, value); err != nil {
+func (t *SparseTree) InsertLeaf(batch TreeLeafGetterSetter, index LeafIndex, value *uint256.Int) error {
+	if err := batch.SetLeaf(0, index, value); err != nil {
 		return fmt.Errorf("set leaf: %w", err)
 	}
 
 	for level := TreeLevel(0); level < t.depth; level++ {
-		nodeHash, err := t.calculateHashForNode(store, level, index)
+		nodeHash, err := t.calculateHashForNode(batch, level, index)
 		if err != nil {
 			return fmt.Errorf("compute node hash: %w", err)
 		}
 
 		index = index / 2
 
-		if err := store.SetLeaf(level+1, index, nodeHash); err != nil {
+		if err := batch.SetLeaf(level+1, index, nodeHash); err != nil {
 			return fmt.Errorf("set node: %w", err)
 		}
 	}
@@ -253,8 +253,8 @@ func (t *SparseTree) GetRandomEmptyLeafIndex() (LeafIndex, error) {
 
 // calculateHashForNode calculates the hash of the node at the specified level and index.
 // It retrieves the sibling nodes and calculates the hash of the node.
-func (t *SparseTree) calculateHashForNode(store TreeLeafGetterSetter, level TreeLevel, index LeafIndex) (*uint256.Int, error) {
-	leftNode, rightNode, err := t.getSiblingNodes(store, level, index)
+func (t *SparseTree) calculateHashForNode(batch TreeLeafGetterSetter, level TreeLevel, index LeafIndex) (*uint256.Int, error) {
+	leftNode, rightNode, err := t.getSiblingNodes(batch, level, index)
 	if err != nil {
 		return nil, fmt.Errorf("get sibling nodes: %w", err)
 	}

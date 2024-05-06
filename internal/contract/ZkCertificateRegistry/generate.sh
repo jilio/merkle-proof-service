@@ -16,8 +16,8 @@
 
 #!/bin/bash
 
-# Generate the golang bindings for the KYCRecordRegistry contract from ABI
+# Generate the golang bindings for the ZkCertificateRegistry contract from ABI
 abigen \
-  --abi=internal/contract/KYCRecordRegistry/abi.json \
-  --pkg=KYCRecordRegistry \
-  --out=internal/contract/KYCRecordRegistry/contract.go
+  --abi=internal/contract/ZkCertificateRegistry/abi.json \
+  --pkg=ZkCertificateRegistry \
+  --out=internal/contract/ZkCertificateRegistry/contract.go

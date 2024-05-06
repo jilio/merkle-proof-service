@@ -26,6 +26,7 @@ import (
 	db "github.com/cometbft/cometbft-db"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 )
 
 func TestSparseTree_NewEmptySparseTree(t *testing.T) {
@@ -186,15 +187,16 @@ func BenchmarkInsertLeaves(b *testing.B) {
 }
 
 func BenchmarkCreateProof(b *testing.B) {
-	kv, err := db.NewGoLevelDB("merkle", "./testdb/")
-	require.NoError(b, err)
+	//kv, err := db.NewGoLevelDB("merkle", "./testdb/")
+	//require.NoError(b, err)
+	kv := db.NewMemDB()
 	defer kv.Close()
 	treeStorage := NewSparseTreeStorage(kv, 0)
 
 	sparseTree, err := NewSparseTree(32, EmptyLeafValue, treeStorage)
 	require.NoError(b, err)
 
-	// insert 10000 leaves:
+	// insert 100000 leaves:
 	countLeaves := 100000
 	leaves := make([]Leaf, countLeaves)
 	for i := 0; i < countLeaves; i++ {
@@ -218,6 +220,65 @@ func BenchmarkCreateProof(b *testing.B) {
 		}
 		totalOps++
 	}
+
+	fmt.Println("end:", time.Since(start))
+	fmt.Println("total ops:", totalOps)
+	fmt.Println("average ops/s:", float64(totalOps)/time.Since(start).Seconds())
+
+}
+
+func BenchmarkCreateProofParallel(b *testing.B) {
+	//kv, err := db.NewGoLevelDB("merkle", "./testdb/")
+	//require.NoError(b, err)
+	kv := db.NewMemDB()
+	defer kv.Close()
+	treeStorage := NewSparseTreeStorage(kv, 0)
+
+	sparseTree, err := NewSparseTree(32, EmptyLeafValue, treeStorage)
+	require.NoError(b, err)
+
+	// insert 100000 leaves:
+	countLeaves := 100000
+	leaves := make([]Leaf, countLeaves)
+	for i := 0; i < countLeaves; i++ {
+		leaves[i] = Leaf{Index: LeafIndex(rand.Uint32()), Value: uint256.NewInt(rand.Uint64())}
+	}
+	batch := NewBatchWithLeavesBuffer(treeStorage.NewBatch(), 0)
+	_ = sparseTree.InsertLeaves(batch, leaves)
+	require.NoError(b, batch.WriteSync())
+
+	workers := 6
+	jobs := make(chan LeafIndex, workers*2)
+	wgr, _ := errgroup.WithContext(context.Background())
+	for i := 0; i < workers; i++ {
+		wgr.Go(func() error {
+			for index := range jobs {
+				_, err := sparseTree.CreateProof(context.Background(), index)
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
+
+	b.ResetTimer()
+
+	start := time.Now()
+	totalOps := 0
+	index := 0
+
+	for i := 0; i < b.N; i++ {
+		jobs <- leaves[index].Index
+		index++
+		if index >= countLeaves {
+			index = 0
+		}
+		totalOps++
+	}
+
+	close(jobs)
+	require.NoError(b, wgr.Wait())
 
 	fmt.Println("end:", time.Since(start))
 	fmt.Println("total ops:", totalOps)

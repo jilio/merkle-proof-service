@@ -91,7 +91,7 @@ func NewJobFactory(
 // Produce creates a new event handler based on provided job descriptor.
 func (f *JobFactory) Produce(jobDescriptor JobDescriptor) (JobHandler, error) {
 	switch jobDescriptor.Contract {
-	case ContractKYCRecordRegistry:
+	case ContractZkCertificateRegistry:
 		treeIndex, err := f.treeFactory.FindTreeIndex(jobDescriptor.Address)
 		if err != nil {
 			return nil, fmt.Errorf("get address index for address %s: %w", jobDescriptor.Address.String(), err)
@@ -101,7 +101,7 @@ func (f *JobFactory) Produce(jobDescriptor JobDescriptor) (JobHandler, error) {
 		if err != nil {
 			return nil, fmt.Errorf("get merkle tree for address %s: %w", jobDescriptor.Address.String(), err)
 		}
-		return NewKYCRecordRegistryJob(
+		return NewZkCertificateRegistry(
 			JobDescriptorWithTreeIndex{jobDescriptor, treeIndex},
 			f.jobUpdater,
 			f.batchCreator,
