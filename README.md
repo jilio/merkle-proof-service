@@ -95,21 +95,26 @@ Here is an example of the configuration file:
 
 ```yaml
 log_level: info
-evm_rpc: wss://evm-rpc-ws-reticulum.galactica.com
+evm_rpc: wss://evm-rpc-ws-andromeda.galactica.com
 db_backend: pebbledb
 grpc:
   address: localhost:50651
 grpc_gateway:
   address: localhost:8480
+indexer:
+  max_blocks_distance: 1000
+  sink_channel_size: 100
+  sink_progress_tick: 5s
 zk_certificate_registry:
    - 0xbc196948e8c1Bc416aEaCf309a63DCEFfdf0cE31
 ```
 
 ### Ethereum contract configuration
 
-The `jobs` section of the configuration file is used to specify the Ethereum contract addresses and the corresponding Solidity contract names. The `start_block` parameter is used to specify the block number from which the indexer should start indexing the contract events. 
+The `zk_certificate_registry` field in the configuration file specifies the Ethereum contract addresses for the zk certificate registry. The Merkle Proof Service uses these contracts to fill the Merkle tree storage.
+The initial block number fetching from the smart contract.
 
-You can add multiple jobs to the configuration file to index multiple contracts. 
+You can specify multiple contract addresses in the configuration file. 
 
 ### Environment variables
 
