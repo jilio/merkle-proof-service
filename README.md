@@ -52,6 +52,10 @@ Here are the available flags for the `start` command:
 - `--evm-rpc string`: EVM RPC endpoint (default "ws://localhost:8546")
 - `--grpc-gateway.address string`: gRPC gateway server address (default "localhost:8480")
 - `--grpc.address string`: gRPC server address (default "localhost:50651")
+- `--indexer.max_blocks_distance uint`: max blocks distance to retrieve logs from the EVM node (default 10000)
+- `--indexer.sink_channel_size uint`: indexer sink channel buffer size (default 100)
+- `--indexer.sink_progress_tick duration`: indexer sink progress tick duration (default 5s)
+- `--zk_certificate_registry strings`: zk certificate registry contract addresses list
 
 And the global flags:
 
@@ -71,8 +75,8 @@ The `gRPC` interface is available at `http://localhost:50651`. You cain find the
 
 The service provides the following methods:
 
-- `Proof`: Retrieves the Merkle proof for a given contract address and leaf index.
-- `GetEmptyIndex`: Retrieves the random empty index for a given contract address.
+- `Proof`: Retrieves the Merkle proof for a given contract address and leaf value.
+- `GetEmptyLeafProof`: Retrieves the random empty index with the Merkle proof for a given contract address.
 
 ### gRPC-gateway
 
@@ -80,8 +84,8 @@ By default, the `gRPC-gateway` interface is available at `http://localhost:8480`
 
 The service provides the following endpoints:
 
-- `GET /v1/galactica/merkle/proof/{registry}/{leaf}`: Retrieves the Merkle proof for a given contract address and leaf index.
-- `GET /v1/galactica/merkle/empty_index/{registry}`: Retrieves the random empty index for a given contract address.
+- `GET /v1/galactica/merkle/proof/{registry}/{leaf}`: Retrieves the Merkle proof for a given contract address and leaf value.
+- `GET /v1/galactica/merkle/empty_proof/{registry}`: Retrieves the random empty index with the Merkle proof for a given contract address.
 
 ## Configuration
 
@@ -91,23 +95,26 @@ Here is an example of the configuration file:
 
 ```yaml
 log_level: info
-evm_rpc: wss://evm-rpc-ws-reticulum.galactica.com
+evm_rpc: wss://evm-rpc-ws-andromeda.galactica.com
 db_backend: pebbledb
 grpc:
   address: localhost:50651
 grpc_gateway:
   address: localhost:8480
-jobs:
-  - address: 0x<contract_address>
-    contract: ZkCertificateRegistry
-    start_block: <start_block>
+indexer:
+  max_blocks_distance: 1000
+  sink_channel_size: 100
+  sink_progress_tick: 5s
+zk_certificate_registry:
+   - 0xbc196948e8c1Bc416aEaCf309a63DCEFfdf0cE31
 ```
 
 ### Ethereum contract configuration
 
-The `jobs` section of the configuration file is used to specify the Ethereum contract addresses and the corresponding Solidity contract names. The `start_block` parameter is used to specify the block number from which the indexer should start indexing the contract events. 
+The `zk_certificate_registry` field in the configuration file specifies the Ethereum contract addresses for the zk certificate registry. The Merkle Proof Service uses these contracts to fill the Merkle tree storage.
+The initial block number fetching from the smart contract.
 
-You can add multiple jobs to the configuration file to index multiple contracts. 
+You can specify multiple contract addresses in the configuration file. 
 
 ### Environment variables
 

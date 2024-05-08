@@ -24,12 +24,13 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	db "github.com/cometbft/cometbft-db"
 	"github.com/cometbft/cometbft/libs/log"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/Galactica-corp/merkle-proof-service/internal/indexer"
-	"github.com/Galactica-corp/merkle-proof-service/internal/merkle"
 	"github.com/Galactica-corp/merkle-proof-service/internal/query"
+	"github.com/Galactica-corp/merkle-proof-service/internal/zkregistry"
 )
 
 const (
@@ -66,10 +67,13 @@ type (
 		DbBackend db.BackendType
 
 		// Jobs is a list of jobs that should be applied to the indexer
-		Jobs []indexer.JobDescriptor
+		ZkCertificateRegistry []common.Address
 
 		// QueryServer is the configuration for the query server
 		QueryServer QueryServerConfig
+
+		// IndexerConfig is the configuration for the indexer
+		IndexerConfig indexer.Config
 	}
 
 	QueryServerConfig struct {
@@ -84,21 +88,17 @@ type (
 	Application struct {
 		config ApplicationConfig
 
-		kvDB           db.DB
-		ethereumClient *ethclient.Client
-		queryServer    *query.Server
-
-		// merkle tree
-		treeFactory      *merkle.TreeFactoryWithCache
-		treeIndexStorage *merkle.TreeIndexStorage
-		leafIndexStorage *merkle.LeafIndexStorage
-		treeMutex        *merkle.TreeMutex
+		kvDB            db.DB
+		ethereumClient  *ethclient.Client
+		queryServer     *query.Server
+		registryService *zkregistry.Service
 
 		// indexer
 		jobStorage   *indexer.JobStorage
 		jobFactory   *indexer.JobFactory
 		evmIndexer   *indexer.Indexer
 		configurator *indexer.Configurator
+		jobs         []indexer.JobDescriptor
 
 		logger log.Logger
 	}
@@ -140,7 +140,7 @@ func StartApplication(ctx context.Context, config ApplicationConfig, logger log.
 	})
 
 	if err := wgr.Wait(); err != nil {
-		logger.Error("wait for goroutines", "error", err)
+		logger.Error("wait application workers", "error", err)
 	}
 
 	return nil
@@ -151,7 +151,7 @@ func (app *Application) Init(ctx context.Context) error {
 	app.logger.Info("connecting to EVM RPC", "evm_rpc", app.config.EvmRpc)
 	if err := backoff.Retry(func() error {
 		var err error
-		app.ethereumClient, err = ethclient.Dial(app.config.EvmRpc)
+		app.ethereumClient, err = ethclient.DialContext(ctx, app.config.EvmRpc)
 
 		return err
 	}, backoff.NewExponentialBackOff()); err != nil {
@@ -160,7 +160,11 @@ func (app *Application) Init(ctx context.Context) error {
 	}
 
 	app.logger.Info("connected to EVM RPC")
-	latestBlock, err := app.ethereumClient.BlockByNumber(ctx, nil)
+
+	ctxGetBlock, cancelGetBlock := context.WithTimeout(ctx, 15*time.Second)
+	defer cancelGetBlock()
+
+	latestBlock, err := app.ethereumClient.BlockByNumber(ctxGetBlock, nil)
 	if err != nil {
 		app.logger.Error("get latest block", "error", err)
 		return fmt.Errorf("get latest block: %w", err)
@@ -174,29 +178,29 @@ func (app *Application) Init(ctx context.Context) error {
 		return fmt.Errorf("create storage DB: %w", err)
 	}
 
-	app.leafIndexStorage = merkle.NewLeafIndexStorage(app.kvDB)
-	app.treeIndexStorage = merkle.NewTreeIndexStorage(app.kvDB)
-	app.treeFactory = merkle.NewTreeFactoryWithCache(merkle.TreeDepth, merkle.EmptyLeafValue, app.treeIndexStorage)
-	app.treeMutex = merkle.NewTreeMutex()
+	app.registryService = zkregistry.InitializeService(app.kvDB, app.ethereumClient)
 
 	// Apply all ZK Registry addresses to the index
-	if err := app.applyJobsToIndex(ctx, app.config.Jobs); err != nil {
-		return fmt.Errorf("apply jobs to index: %w", err)
+	app.jobs, err = app.configureZkCertificateRegistry(ctx, app.config.ZkCertificateRegistry)
+	if err != nil {
+		return fmt.Errorf("configure zk certificate registry: %w", err)
+	}
+
+	if len(app.jobs) == 0 {
+		return fmt.Errorf("no jobs to apply, please specify at least one zk certificate registry address")
 	}
 
 	app.jobStorage = indexer.NewJobStorage(app.kvDB)
-	app.evmIndexer = indexer.NewEVMIndexer(app.ethereumClient, app.logger)
+	app.evmIndexer = indexer.NewEVMIndexer(app.ethereumClient, app.config.IndexerConfig, app.logger)
 	app.jobFactory = indexer.NewJobFactory(
 		app.ethereumClient,
-		app.treeFactory,
+		app.registryService,
 		app.jobStorage,
 		app.kvDB,
-		app.leafIndexStorage,
-		app.treeMutex,
 		app.logger,
 	)
 
-	app.queryServer = query.NewServer(app.treeFactory, app.leafIndexStorage, app.treeMutex, app.logger)
+	app.queryServer = query.NewServer(app.registryService, app.logger)
 
 	return nil
 }
@@ -219,6 +223,7 @@ func (app *Application) RunIndexer(ctx context.Context) error {
 		app.jobStorage,
 		app.jobFactory,
 		app.evmIndexer,
+		app.jobs,
 		app.logger,
 	)
 	if err != nil {
@@ -226,13 +231,22 @@ func (app *Application) RunIndexer(ctx context.Context) error {
 	}
 
 	// apply all jobs to the indexer
-	if err := app.configurator.ReloadConfig(ctx, app.config.Jobs); err != nil {
+	if err := app.configurator.ReloadConfig(ctx, app.jobs); err != nil {
 		return fmt.Errorf("start job: %w", err)
 	}
 
-	<-ctx.Done()
-	app.logger.Info("shutting down indexer server")
-	<-app.configurator.Wait()
+	var jobErr error
+
+	select {
+	case <-ctx.Done():
+		app.logger.Info("shutting down indexer server")
+		<-app.configurator.Wait()
+
+	case err = <-app.configurator.Wait():
+		if err != nil {
+			jobErr = err
+		}
+	}
 
 	// report for every job the last known block
 	ctxReport, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -242,24 +256,42 @@ func (app *Application) RunIndexer(ctx context.Context) error {
 		return fmt.Errorf("select all jobs: %w", err)
 	}
 	for _, job := range finishedJobs {
-		app.logger.Info("job successfully stopped", "job", job.String())
+		app.logger.Info("job finished", "job", job.String())
 	}
 
-	return nil
+	return jobErr
 }
 
-// applyJobsToIndex applies all jobs to the index
-func (app *Application) applyJobsToIndex(_ context.Context, jobs []indexer.JobDescriptor) error {
-	for _, job := range jobs {
-		if job.Contract != indexer.ContractZkCertificateRegistry {
-			// apply only for ZkCertificateRegistry
-			continue
+// configureZkCertificateRegistry configures the ZK Certificate Registry jobs
+func (app *Application) configureZkCertificateRegistry(ctx context.Context, addresses []common.Address) ([]indexer.JobDescriptor, error) {
+	jobs := make([]indexer.JobDescriptor, 0, len(addresses))
+	for _, address := range addresses {
+		registry, err := app.registryService.InitializeRegistry(ctx, address)
+		if err != nil {
+			return nil, fmt.Errorf("initialize registry for address %s: %w", address.Hex(), err)
 		}
 
-		if _, err := app.treeIndexStorage.ApplyAddressToIndex(job.Address); err != nil {
-			return fmt.Errorf("get tree for address: %w", err)
+		app.logger.Info(
+			"initialized registry",
+			"address", address.Hex(),
+			"tree_depth", registry.Metadata().Depth,
+			"description", registry.Metadata().Description,
+			"init_block_height", registry.Metadata().InitBlockHeight,
+		)
+
+		initBlockHeight := registry.Metadata().InitBlockHeight
+		if initBlockHeight > 0 {
+			// start from the previous block to avoid missing events in first initialization
+			initBlockHeight--
 		}
+
+		job := indexer.JobDescriptor{
+			Address:    address,
+			Contract:   indexer.ContractZkCertificateRegistry,
+			StartBlock: initBlockHeight,
+		}
+		jobs = append(jobs, job)
 	}
 
-	return nil
+	return jobs, nil
 }

@@ -71,10 +71,10 @@ func NewJobStorage(db db.DB) *JobStorage {
 	return &JobStorage{db}
 }
 
+// UpsertJob inserts or updates a job in the storage.
 func (q *JobStorage) UpsertJob(_ context.Context, store StoreSetter, job Job) error {
 	var jobBytes []byte
 	enc := codec.NewEncoderBytes(&jobBytes, h)
-
 	if err := enc.Encode(job); err != nil {
 		return fmt.Errorf("serialize job: %w", err)
 	}
@@ -82,10 +82,12 @@ func (q *JobStorage) UpsertJob(_ context.Context, store StoreSetter, job Job) er
 	return store.Set(makeJobKey(job.JobDescriptor), jobBytes)
 }
 
+// DeleteJob deletes a job from the storage.
 func (q *JobStorage) DeleteJob(_ context.Context, store StoreDeleter, jobDescriptor JobDescriptor) error {
 	return store.Delete(makeJobKey(jobDescriptor))
 }
 
+// SelectAllJobs returns all jobs stored in the storage.
 func (q *JobStorage) SelectAllJobs(ctx context.Context) ([]Job, error) {
 	var jobs []Job
 
@@ -115,6 +117,23 @@ func (q *JobStorage) SelectAllJobs(ctx context.Context) ([]Job, error) {
 	}
 
 	return jobs, nil
+}
+
+// SelectJob returns a job by its descriptor.
+func (q *JobStorage) SelectJob(_ context.Context, jobDescriptor JobDescriptor) (*Job, error) {
+	var job Job
+
+	jobBytes, err := q.Get(makeJobKey(jobDescriptor))
+	if err != nil {
+		return nil, err
+	}
+
+	dec := codec.NewDecoderBytes(jobBytes, h)
+	if err := dec.Decode(&job); err != nil {
+		return nil, fmt.Errorf("deserialize job: %w", err)
+	}
+
+	return &job, nil
 }
 
 func makeJobKey(job JobDescriptor) []byte {

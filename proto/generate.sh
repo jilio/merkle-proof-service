@@ -19,3 +19,4 @@
 # This script is for generating protobuf files
 buf generate --template buf.gen.yaml
 buf generate --template buf.gen.ts.yaml
+buf generate --template buf.gen.openapiv2.yaml

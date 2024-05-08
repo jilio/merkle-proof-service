@@ -25,15 +25,13 @@ import (
 	"time"
 
 	"github.com/cometbft/cometbft/libs/log"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/holiman/uint256"
 	"github.com/swaggest/swgui/v5cdn"
 	"google.golang.org/grpc"
 
 	merklegen "github.com/Galactica-corp/merkle-proof-service/gen/galactica/merkle"
 	merkleswagger "github.com/Galactica-corp/merkle-proof-service/gen/openapiv2/galactica/merkle"
-	"github.com/Galactica-corp/merkle-proof-service/internal/merkle"
+	"github.com/Galactica-corp/merkle-proof-service/internal/zkregistry"
 )
 
 const (
@@ -49,42 +47,18 @@ const (
 )
 
 type (
-	TreeFactory interface {
-		GetTreeByIndex(index merkle.TreeIndex) (*merkle.SparseTree, error)
-		FindTreeIndex(address common.Address) (merkle.TreeIndex, error)
-	}
-
-	LeafIndexStorage interface {
-		GetLeafIndex(treeIndex merkle.TreeIndex, leafValue *uint256.Int) (merkle.LeafIndex, error)
-	}
-
-	TreeRMutex interface {
-		RLock(address merkle.TreeIndex)
-		RUnlock(address merkle.TreeIndex)
-	}
-
 	Server struct {
 		merklegen.UnimplementedQueryServer
 
-		treeFactory      TreeFactory
-		leafIndexStorage LeafIndexStorage
-		treeRMutex       TreeRMutex
-
-		logger log.Logger
+		registryService *zkregistry.Service
+		logger          log.Logger
 	}
 )
 
-func NewServer(
-	treeFactory TreeFactory,
-	leafIndexStorage LeafIndexStorage,
-	treeRMutex TreeRMutex,
-	logger log.Logger,
-) *Server {
+func NewServer(registryService *zkregistry.Service, logger log.Logger) *Server {
 	return &Server{
-		treeFactory:      treeFactory,
-		leafIndexStorage: leafIndexStorage,
-		treeRMutex:       treeRMutex,
-		logger:           logger,
+		registryService: registryService,
+		logger:          logger,
 	}
 }
 

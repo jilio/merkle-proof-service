@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package merkle
+package zkregistry
 
 import (
 	"context"
@@ -30,63 +30,68 @@ import (
 )
 
 func TestSparseTree_NewEmptySparseTree(t *testing.T) {
-	treeStorage := NewSparseTreeStorage(db.NewMemDB(), 0)
+	ctx := context.Background()
+	leafStorage := NewLeafStorage(db.NewMemDB())
 
-	sparseTree, err := NewSparseTree(32, EmptyLeafValue, treeStorage)
+	sparseTree, err := NewSparseTree(32, DefaultEmptyLeafValue, leafStorage.LeafView(0))
 	require.NoError(t, err)
 	require.NotNil(t, sparseTree)
 
 	expectedRoot := "4458153349784934502553516908614689315569961543546033257748925180965600564494"
-	actualRoot, err := sparseTree.GetRoot()
+	actualRoot, err := sparseTree.GetRoot(ctx)
 	require.NoError(t, err)
 	require.Equal(t, expectedRoot, actualRoot.String())
 }
 
 func TestSparseTree_InsertOneLeaf(t *testing.T) {
-	treeStorage := NewSparseTreeStorage(db.NewMemDB(), 0)
-	sparseTree, err := NewSparseTree(32, EmptyLeafValue, treeStorage)
+	ctx := context.Background()
+	leafStorage := NewLeafStorage(db.NewMemDB())
+	sparseTree, err := NewSparseTree(32, DefaultEmptyLeafValue, leafStorage.LeafView(0))
 	require.NoError(t, err)
 
-	batch := treeStorage.NewBatch()
+	batch := leafStorage.NewBatch(0)
 	leaf := uint256.NewInt(42)
-	err = sparseTree.InsertLeaf(batch, 42, leaf)
+	err = sparseTree.InsertLeaf(ctx, batch, 42, leaf)
 	require.NoError(t, err)
 	require.NoError(t, batch.WriteSync())
 
 	expectedRoot := "1272030076048962209577533329408004903658515419333039005216957110328648641727"
-	actualRoot, err := sparseTree.GetRoot()
+	actualRoot, err := sparseTree.GetRoot(ctx)
 	require.NoError(t, err)
 	require.Equal(t, expectedRoot, actualRoot.String())
 }
 
 func TestSparseTree_InsertSomeLeaves(t *testing.T) {
-	treeStorage := NewSparseTreeStorage(db.NewMemDB(), 0)
-	sparseTree, err := NewSparseTree(32, EmptyLeafValue, treeStorage)
+	ctx := context.Background()
+	leafStorage := NewLeafStorage(db.NewMemDB())
+	sparseTree, err := NewSparseTree(32, DefaultEmptyLeafValue, leafStorage.LeafView(0))
 	require.NoError(t, err)
 
-	batch := treeStorage.NewBatch()
-	require.NoError(t, sparseTree.InsertLeaf(batch, 42, uint256.NewInt(42)))
-	require.NoError(t, sparseTree.InsertLeaf(batch, 43, uint256.NewInt(43)))
-	require.NoError(t, sparseTree.InsertLeaf(batch, 44, uint256.NewInt(44)))
-	require.NoError(t, sparseTree.InsertLeaf(batch, 123123321, uint256.NewInt(123123321)))
+	batch := leafStorage.NewBatch(0)
+	require.NoError(t, sparseTree.InsertLeaf(ctx, batch, 42, uint256.NewInt(42)))
+	require.NoError(t, sparseTree.InsertLeaf(ctx, batch, 43, uint256.NewInt(43)))
+	require.NoError(t, sparseTree.InsertLeaf(ctx, batch, 44, uint256.NewInt(44)))
+	require.NoError(t, sparseTree.InsertLeaf(ctx, batch, 123123321, uint256.NewInt(123123321)))
 	require.NoError(t, batch.WriteSync())
 
 	expectedRoot := "13628023850636386189646161530122752087460788539560717966676470969976684154674"
-	actualRoot, err := sparseTree.GetRoot()
+	actualRoot, err := sparseTree.GetRoot(ctx)
 	require.NoError(t, err)
 	require.Equal(t, expectedRoot, actualRoot.String())
 }
 
 func TestSparseTree_InsertSomeLeavesBatch(t *testing.T) {
-	treeStorage := NewSparseTreeStorage(db.NewMemDB(), 0)
+	ctx := context.Background()
+	leafStorage := NewLeafStorage(db.NewMemDB())
 
-	sparseTree, err := NewSparseTree(32, EmptyLeafValue, treeStorage)
+	sparseTree, err := NewSparseTree(32, DefaultEmptyLeafValue, leafStorage.LeafView(0))
 	require.NoError(t, err)
 
-	batch := treeStorage.NewBatch()
+	batch := leafStorage.NewBatch(0)
 	require.NoError(t, sparseTree.InsertLeaves(
+		ctx,
 		batch,
-		[]Leaf{
+		[]TreeLeaf{
 			{Index: 42, Value: uint256.NewInt(42)},
 			{Index: 43, Value: uint256.NewInt(43)},
 			{Index: 44, Value: uint256.NewInt(44)},
@@ -96,25 +101,26 @@ func TestSparseTree_InsertSomeLeavesBatch(t *testing.T) {
 	require.NoError(t, batch.WriteSync())
 
 	expectedRoot := "13628023850636386189646161530122752087460788539560717966676470969976684154674"
-	actualRoot, err := sparseTree.GetRoot()
+	actualRoot, err := sparseTree.GetRoot(ctx)
 	require.NoError(t, err)
 	require.Equal(t, expectedRoot, actualRoot.String())
 }
 
 func TestSparseTree_CreateProof(t *testing.T) {
-	treeStorage := NewSparseTreeStorage(db.NewMemDB(), 0)
-	sparseTree, _ := NewSparseTree(32, EmptyLeafValue, treeStorage)
+	ctx := context.Background()
+	leafStorage := NewLeafStorage(db.NewMemDB())
+	sparseTree, _ := NewSparseTree(32, DefaultEmptyLeafValue, leafStorage.LeafView(0))
 
-	// insert Leaf:
-	batch := NewBatchWithLeavesBuffer(treeStorage.NewBatch(), 0)
-	require.NoError(t, sparseTree.InsertLeaf(batch, 42, uint256.NewInt(42)))
+	// insert TreeLeaf:
+	batch := NewBatchWithLeavesBuffer(leafStorage.NewBatch(0), 0)
+	require.NoError(t, sparseTree.InsertLeaf(ctx, batch, 42, uint256.NewInt(42)))
 	require.NoError(t, batch.WriteSync())
 
 	// create proof:
 	proof, err := sparseTree.CreateProof(context.Background(), 42)
 	require.NoError(t, err)
 
-	expectedProof := &Proof{
+	expectedProof := &MerkleProof{
 		Leaf:  uint256.NewInt(42),
 		Index: 42,
 		Root:  uint256.MustFromDecimal("1272030076048962209577533329408004903658515419333039005216957110328648641727"),
@@ -164,15 +170,17 @@ func TestSparseTree_CreateProof(t *testing.T) {
 }
 
 func BenchmarkInsertLeaves(b *testing.B) {
-	treeStorage := NewSparseTreeStorage(db.NewMemDB(), 0)
-	sparseTree, err := NewSparseTree(32, EmptyLeafValue, treeStorage)
+	ctx := context.Background()
+	leafStorage := NewLeafStorage(db.NewMemDB())
+	leafView := leafStorage.LeafView(0)
+	sparseTree, err := NewSparseTree(32, DefaultEmptyLeafValue, leafView)
 	require.NoError(b, err)
 
 	// generate some indexes:
-	indexes := make([]LeafIndex, 10000)
+	indexes := make([]TreeLeafIndex, 10000)
 	values := make([]*uint256.Int, 10000)
 	for i := 0; i < 10000; i++ {
-		indexes[i] = LeafIndex(i)
+		indexes[i] = TreeLeafIndex(i)
 		values[i] = uint256.NewInt(rand.Uint64())
 	}
 
@@ -181,7 +189,7 @@ func BenchmarkInsertLeaves(b *testing.B) {
 
 	index := 0
 	for i := 0; i < b.N; i++ {
-		_ = sparseTree.InsertLeaf(treeStorage, indexes[index], values[index])
+		_ = sparseTree.InsertLeaf(ctx, leafView, indexes[index], values[index])
 		index++
 	}
 }
@@ -189,21 +197,23 @@ func BenchmarkInsertLeaves(b *testing.B) {
 func BenchmarkCreateProof(b *testing.B) {
 	//kv, err := db.NewGoLevelDB("merkle", "./testdb/")
 	//require.NoError(b, err)
+	ctx := context.Background()
 	kv := db.NewMemDB()
 	defer kv.Close()
-	treeStorage := NewSparseTreeStorage(kv, 0)
+	leafStorage := NewLeafStorage(kv)
 
-	sparseTree, err := NewSparseTree(32, EmptyLeafValue, treeStorage)
+	sparseTree, err := NewSparseTree(32, DefaultEmptyLeafValue, leafStorage.LeafView(0))
 	require.NoError(b, err)
 
 	// insert 100000 leaves:
 	countLeaves := 100000
-	leaves := make([]Leaf, countLeaves)
+	leaves := make([]TreeLeaf, countLeaves)
 	for i := 0; i < countLeaves; i++ {
-		leaves[i] = Leaf{Index: LeafIndex(rand.Uint32()), Value: uint256.NewInt(rand.Uint64())}
+		leaves[i] = TreeLeaf{Index: TreeLeafIndex(rand.Uint32()), Value: uint256.NewInt(rand.Uint64())}
 	}
-	batch := NewBatchWithLeavesBuffer(treeStorage.NewBatch(), 0)
-	_ = sparseTree.InsertLeaves(batch, leaves)
+	batch := NewBatchWithLeavesBuffer(leafStorage.NewBatch(0), 0)
+	err = sparseTree.InsertLeaves(ctx, batch, leaves)
+	require.NoError(b, err)
 	require.NoError(b, batch.WriteSync())
 
 	b.ResetTimer()
@@ -230,25 +240,26 @@ func BenchmarkCreateProof(b *testing.B) {
 func BenchmarkCreateProofParallel(b *testing.B) {
 	//kv, err := db.NewGoLevelDB("merkle", "./testdb/")
 	//require.NoError(b, err)
+	ctx := context.Background()
 	kv := db.NewMemDB()
 	defer kv.Close()
-	treeStorage := NewSparseTreeStorage(kv, 0)
+	leafStorage := NewLeafStorage(kv)
 
-	sparseTree, err := NewSparseTree(32, EmptyLeafValue, treeStorage)
+	sparseTree, err := NewSparseTree(32, DefaultEmptyLeafValue, leafStorage.LeafView(0))
 	require.NoError(b, err)
 
 	// insert 100000 leaves:
 	countLeaves := 100000
-	leaves := make([]Leaf, countLeaves)
+	leaves := make([]TreeLeaf, countLeaves)
 	for i := 0; i < countLeaves; i++ {
-		leaves[i] = Leaf{Index: LeafIndex(rand.Uint32()), Value: uint256.NewInt(rand.Uint64())}
+		leaves[i] = TreeLeaf{Index: TreeLeafIndex(rand.Uint32()), Value: uint256.NewInt(rand.Uint64())}
 	}
-	batch := NewBatchWithLeavesBuffer(treeStorage.NewBatch(), 0)
-	_ = sparseTree.InsertLeaves(batch, leaves)
+	batch := NewBatchWithLeavesBuffer(leafStorage.NewBatch(0), 0)
+	_ = sparseTree.InsertLeaves(ctx, batch, leaves)
 	require.NoError(b, batch.WriteSync())
 
 	workers := 6
-	jobs := make(chan LeafIndex, workers*2)
+	jobs := make(chan TreeLeafIndex, workers*2)
 	wgr, _ := errgroup.WithContext(context.Background())
 	for i := 0; i < workers; i++ {
 		wgr.Go(func() error {

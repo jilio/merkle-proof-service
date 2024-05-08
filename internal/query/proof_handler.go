@@ -18,6 +18,7 @@ package query
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/holiman/uint256"
@@ -25,7 +26,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	merklegen "github.com/Galactica-corp/merkle-proof-service/gen/galactica/merkle"
-	"github.com/Galactica-corp/merkle-proof-service/internal/merkle"
+	"github.com/Galactica-corp/merkle-proof-service/internal/types"
 )
 
 // Proof queries the proof of a leaf in the merkle tree.
@@ -39,28 +40,17 @@ func (s *Server) Proof(ctx context.Context, req *merklegen.QueryProofRequest) (*
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid leaf value, must be a decimal number: %s", req.Leaf)
 	}
-
-	treeIndex, err := s.treeFactory.FindTreeIndex(address)
+	registry, err := s.registryService.ZKCertificateRegistry(ctx, address)
 	if err != nil {
-		s.logger.Error("failed to find address index", "error", err)
-		return nil, status.Errorf(codes.Internal, "failed to find tree index")
+		return nil, status.Errorf(codes.NotFound, "registry not found: %s", req.Registry)
 	}
 
-	tree, err := s.treeFactory.GetTreeByIndex(treeIndex)
+	proof, err := registry.CreateProof(ctx, leafValue)
 	if err != nil {
-		s.logger.Error("failed to get tree", "error", err)
-		return nil, status.Errorf(codes.Internal, "failed to get tree")
-	}
-
-	leafIndex, err := s.leafIndexStorage.GetLeafIndex(treeIndex, leafValue)
-	if err != nil {
-		s.logger.Error("failed to get leaf index", "error", err)
-		return nil, status.Errorf(codes.Internal, "failed to get leaf index")
-	}
-
-	proof, err := s.createProof(ctx, tree, treeIndex, leafIndex)
-	if err != nil {
-		return nil, err
+		if errors.Is(err, types.ErrNotFound) {
+			return nil, status.Errorf(codes.NotFound, "leaf not found: %s", req.Leaf)
+		}
+		return nil, status.Errorf(codes.Internal, "failed to create proof for leaf: %s", req.Leaf)
 	}
 
 	path := make([]string, len(proof.Path))
@@ -72,27 +62,8 @@ func (s *Server) Proof(ctx context.Context, req *merklegen.QueryProofRequest) (*
 		Proof: &merklegen.Proof{
 			Leaf:  req.Leaf,
 			Path:  path,
-			Index: uint32(leafIndex),
+			Index: uint32(proof.Index),
 			Root:  proof.Root.String(),
 		},
 	}, nil
-}
-
-func (s *Server) createProof(
-	ctx context.Context,
-	tree *merkle.SparseTree,
-	treeIndex merkle.TreeIndex,
-	leafIndex merkle.LeafIndex,
-) (*merkle.Proof, error) {
-	// the lock here is to prevent the tree from being modified while creating the proof
-	s.treeRMutex.RLock(treeIndex)
-	defer s.treeRMutex.RUnlock(treeIndex)
-
-	proof, err := tree.CreateProof(ctx, leafIndex)
-	if err != nil {
-		s.logger.Error("failed to create proof", "error", err)
-		return nil, status.Errorf(codes.Internal, "failed to create proof")
-	}
-
-	return proof, nil
 }

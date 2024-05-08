@@ -24,10 +24,9 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 
-	"github.com/Galactica-corp/merkle-proof-service/internal/merkle"
+	"github.com/Galactica-corp/merkle-proof-service/internal/zkregistry"
 )
 
 type (
@@ -38,11 +37,6 @@ type (
 		FilterQuery() (ethereum.FilterQuery, error)
 	}
 
-	TreeFactory interface {
-		GetTreeByIndex(index merkle.TreeIndex) (*merkle.SparseTree, error)
-		FindTreeIndex(address common.Address) (merkle.TreeIndex, error)
-	}
-
 	DBBatchCreator interface {
 		NewBatch() db.Batch
 	}
@@ -51,65 +45,42 @@ type (
 		UpsertJob(_ context.Context, store StoreSetter, job Job) error
 	}
 
-	TreeMutex interface {
-		Lock(merkle.TreeIndex)
-		Unlock(merkle.TreeIndex)
-	}
-
 	// JobFactory is a factory that produces event handlers based on provided contract.
 	JobFactory struct {
 		client          bind.ContractFilterer
-		treeFactory     TreeFactory
+		registryService *zkregistry.Service
 		jobUpdater      JobUpdater
 		batchCreator    DBBatchCreator
-		leafIndexSetter LeafIndexSetter
-		treesMutex      TreeMutex
 		logger          log.Logger
 	}
 )
 
 func NewJobFactory(
 	client bind.ContractFilterer,
-	merkleTree TreeFactory,
+	registryService *zkregistry.Service,
 	jobUpdater JobUpdater,
 	batchCreator DBBatchCreator,
-	leafIndexSetter LeafIndexSetter,
-	treesMutex TreeMutex,
 	logger log.Logger,
 ) *JobFactory {
 	return &JobFactory{
 		client:          client,
-		treeFactory:     merkleTree,
+		registryService: registryService,
 		jobUpdater:      jobUpdater,
 		batchCreator:    batchCreator,
-		leafIndexSetter: leafIndexSetter,
-		treesMutex:      treesMutex,
 		logger:          logger,
 	}
 }
 
 // Produce creates a new event handler based on provided job descriptor.
-func (f *JobFactory) Produce(jobDescriptor JobDescriptor) (JobHandler, error) {
+func (f *JobFactory) Produce(ctx context.Context, jobDescriptor JobDescriptor) (JobHandler, error) {
 	switch jobDescriptor.Contract {
 	case ContractZkCertificateRegistry:
-		treeIndex, err := f.treeFactory.FindTreeIndex(jobDescriptor.Address)
+		registry, err := f.registryService.ZKCertificateRegistry(ctx, jobDescriptor.Address)
 		if err != nil {
-			return nil, fmt.Errorf("get address index for address %s: %w", jobDescriptor.Address.String(), err)
+			return nil, fmt.Errorf("get zk certificate registry for address %s: %w", jobDescriptor.Address, err)
 		}
 
-		tree, err := f.treeFactory.GetTreeByIndex(treeIndex)
-		if err != nil {
-			return nil, fmt.Errorf("get merkle tree for address %s: %w", jobDescriptor.Address.String(), err)
-		}
-		return NewZkCertificateRegistry(
-			JobDescriptorWithTreeIndex{jobDescriptor, treeIndex},
-			f.jobUpdater,
-			f.batchCreator,
-			tree,
-			f.leafIndexSetter,
-			f.treesMutex,
-			f.logger,
-		), nil
+		return NewZkCertificateRegistryJob(jobDescriptor, f.jobUpdater, f.batchCreator, registry, f.logger), nil
 
 	default:
 		return nil, fmt.Errorf("unknown contract: %s", jobDescriptor.Contract)

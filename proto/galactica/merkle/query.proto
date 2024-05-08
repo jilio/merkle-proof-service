@@ -13,9 +13,9 @@ service Query {
     option (google.api.http).get = "/v1/galactica/merkle/proof/{registry}/{leaf}";
   }
 
-  // GetEmptyIndex queries the empty leaf index in the merkle tree.
-  rpc GetEmptyIndex (GetEmptyIndexRequest) returns (GetEmptyIndexResponse) {
-    option (google.api.http).get = "/v1/galactica/merkle/empty_index/{registry}";
+  // GetEmptyLeafProof queries the proof of the any empty leaf in the merkle tree.
+  rpc GetEmptyLeafProof (GetEmptyLeafProofRequest) returns (GetEmptyLeafProofResponse) {
+    option (google.api.http).get = "/v1/galactica/merkle/empty_proof/{registry}";
   }
 }
 
@@ -34,16 +34,16 @@ message QueryProofResponse {
   Proof proof = 1;
 }
 
-// GetEmptyIndexRequest is the request type for the Query.GetEmptyIndex method.
-message GetEmptyIndexRequest {
+// GetEmptyLeafProofRequest is the request type for the Query.GetEmptyLeafProof method.
+message GetEmptyLeafProofRequest {
   // registry is the ZkCertificateRegistry hex address, which starts with 0x.
   string registry = 1;
 }
 
-// GetEmptyIndexResponse is the response type for the Query.GetEmptyIndex method.
-message GetEmptyIndexResponse {
-  // index is the empty leaf index.
-  uint32 index = 1;
+// GetEmptyIndexResponse is the response type for the Query.GetEmptyLeafProof method.
+message GetEmptyLeafProofResponse {
+  // proof is the merkle proof of the empty leaf.
+  Proof proof = 1;
 }
 
 // Proof is the merkle proof.
