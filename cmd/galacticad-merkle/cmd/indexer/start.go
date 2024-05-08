@@ -100,7 +100,6 @@ func CreateStartCmd() *cobra.Command {
 			}
 
 			if err := pkgindexer.StartApplication(cmd.Context(), appConfig, logger); err != nil {
-				logger.Error("start indexer application", "error", err)
 				return fmt.Errorf("start indexer server: %w", err)
 			}
 

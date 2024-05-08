@@ -186,6 +186,10 @@ func (app *Application) Init(ctx context.Context) error {
 		return fmt.Errorf("configure zk certificate registry: %w", err)
 	}
 
+	if len(app.jobs) == 0 {
+		return fmt.Errorf("no jobs to apply, please specify at least one zk certificate registry address")
+	}
+
 	app.jobStorage = indexer.NewJobStorage(app.kvDB)
 	app.evmIndexer = indexer.NewEVMIndexer(app.ethereumClient, app.config.IndexerConfig, app.logger)
 	app.jobFactory = indexer.NewJobFactory(
@@ -219,6 +223,7 @@ func (app *Application) RunIndexer(ctx context.Context) error {
 		app.jobStorage,
 		app.jobFactory,
 		app.evmIndexer,
+		app.jobs,
 		app.logger,
 	)
 	if err != nil {

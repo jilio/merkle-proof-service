@@ -143,8 +143,6 @@ docker run -d \
    Galactica-corp/merkle-proof-service
 ```
 
-docker run -d --name merkle-proof-service -p 50651:50651 -p 8480:8480 -e EVM_RPC=wss://evm-rpc-ws-andromeda.galactica.com -e DB_BACKEND=pebbledb -v ./tmp-galacticad-merkle:/root/.galacticad-merkle Galactica-corp/merkle-proof-service
-
 This command will start the Merkle Proof Service in a Docker container with the default configuration. You can customize the configuration by passing environment variables to the `docker run` command.
 
 ## License

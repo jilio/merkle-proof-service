@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	db "github.com/cometbft/cometbft-db"
 	"github.com/cometbft/cometbft/libs/log"
@@ -75,6 +76,7 @@ func InitConfiguratorFromStorage(
 	jobStorage *JobStorage,
 	jobHandlersProducer JobHandlersProducer,
 	evmIndexer EVMIndexer,
+	activeSet []JobDescriptor,
 	logger log.Logger,
 ) (*Configurator, error) {
 	c := NewConfigurator(jobStorage, jobHandlersProducer, evmIndexer, logger)
@@ -85,6 +87,13 @@ func InitConfiguratorFromStorage(
 	}
 
 	for _, job := range jobs {
+		// check if the job is in the active set
+		if !slices.ContainsFunc(activeSet, func(i JobDescriptor) bool {
+			return i == job.JobDescriptor
+		}) {
+			continue
+		}
+
 		if err := c.StartJob(ctx, JobDescriptor{
 			Address:    job.Address,
 			Contract:   job.Contract,

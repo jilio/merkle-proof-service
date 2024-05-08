@@ -77,7 +77,7 @@ func (f *JobFactory) Produce(ctx context.Context, jobDescriptor JobDescriptor) (
 	case ContractZkCertificateRegistry:
 		registry, err := f.registryService.ZKCertificateRegistry(ctx, jobDescriptor.Address)
 		if err != nil {
-			return nil, fmt.Errorf("get tree view for address %s: %w", jobDescriptor.Address.String(), err)
+			return nil, fmt.Errorf("get zk certificate registry for address %s: %w", jobDescriptor.Address, err)
 		}
 
 		return NewZkCertificateRegistryJob(jobDescriptor, f.jobUpdater, f.batchCreator, registry, f.logger), nil
