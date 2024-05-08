@@ -28,6 +28,7 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/swaggest/swgui/v5cdn"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 
 	merklegen "github.com/Galactica-corp/merkle-proof-service/gen/galactica/merkle"
 	merkleswagger "github.com/Galactica-corp/merkle-proof-service/gen/openapiv2/galactica/merkle"
@@ -106,7 +107,18 @@ func (s *Server) RunGateway(ctx context.Context, address string) error {
 
 	gwmux := runtime.NewServeMux(
 		runtime.WithIncomingHeaderMatcher(runtime.DefaultHeaderMatcher),
+
+		//  CORS middleware for all requests
+		runtime.WithForwardResponseOption(func(ctx context.Context, w http.ResponseWriter, msg proto.Message) error {
+			header := w.Header()
+			header.Set("Access-Control-Allow-Origin", "*")
+			header.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			header.Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-ID, X-Client-ID")
+
+			return nil
+		}),
 	)
+
 	if err := merklegen.RegisterQueryHandlerServer(ctx, gwmux, s); err != nil {
 		return fmt.Errorf("failed to register gRPC gateway: %v", err)
 	}
