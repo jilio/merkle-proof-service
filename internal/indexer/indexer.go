@@ -28,11 +28,12 @@ import (
 )
 
 const (
-	sinkSize          = 100
-	maxBlocksDistance = 10000
-	sinkProgressTick  = 5 * time.Second
+	MaxBlocksDistance = 10000
+	SinkSize          = 100
+	SinkProgressTick  = 5 * time.Second
 
 	BlockTypeLength = 8
+	getBlockTimeout = 15 * time.Second
 )
 
 type (
@@ -41,16 +42,40 @@ type (
 		ethereum.LogFilterer
 	}
 
+	Config struct {
+		MaxBlocksDistance uint64        `yaml:"max_blocks_distance"`
+		SinkChannelSize   uint          `yaml:"sink_channel_size"`
+		SinkProgressTick  time.Duration `yaml:"sink_progress_tick"`
+	}
+
 	// Indexer indexes events by subscribing to new and filtering historical events using EthereumClient.
 	Indexer struct {
 		client EthereumClient
+		config Config
 		logger log.Logger
 	}
 )
 
-func NewEVMIndexer(client EthereumClient, logger log.Logger) *Indexer {
+func NewEVMIndexer(
+	client EthereumClient,
+	config Config,
+	logger log.Logger,
+) *Indexer {
+	if config.MaxBlocksDistance == 0 {
+		config.MaxBlocksDistance = MaxBlocksDistance
+	}
+
+	if config.SinkChannelSize == 0 {
+		config.SinkChannelSize = SinkSize
+	}
+
+	if config.SinkProgressTick == 0 {
+		config.SinkProgressTick = SinkProgressTick
+	}
+
 	return &Indexer{
 		client: client,
+		config: config,
 		logger: logger,
 	}
 }
@@ -58,24 +83,30 @@ func NewEVMIndexer(client EthereumClient, logger log.Logger) *Indexer {
 // IndexEVMLogs indexed events logs using the provided query from the provided start block.
 // Because of subscription, it blocks forever unless the context will be cancelled or some error will arise.
 func (ixr *Indexer) IndexEVMLogs(ctx context.Context, query ethereum.FilterQuery, startBlock uint64, handler JobHandler) error {
-	currentBlock, err := ixr.client.BlockNumber(ctx)
+	ctxGetBlock, getBlockCancel := context.WithTimeout(ctx, getBlockTimeout)
+	currentBlock, err := ixr.client.BlockNumber(ctxGetBlock)
 	if err != nil {
+		getBlockCancel()
 		return fmt.Errorf("get current block number: %w", err)
 	}
+	getBlockCancel()
 
 	if startBlock > currentBlock {
 		return fmt.Errorf("start block is greater than the current block")
 	}
 
 	fromBlock := startBlock
-	sink := make(chan types.Log, sinkSize)
+	sinkCtx, sinkCancel := context.WithCancelCause(ctx)
+	sink := make(chan types.Log, ixr.config.SinkChannelSize)
 	defer close(sink)
 
 	subscriptionStarted := false
-	startSubscription := func(ctx context.Context, query ethereum.FilterQuery, sink chan<- types.Log) bool {
-		var cancel context.CancelCauseFunc
-		ctx, cancel = context.WithCancelCause(ctx)
-
+	startSubscription := func(
+		ctx context.Context,
+		cancel context.CancelCauseFunc,
+		query ethereum.FilterQuery,
+		sink chan<- types.Log,
+	) bool {
 		query.FromBlock = new(big.Int).SetUint64(fromBlock)
 		query.ToBlock = nil
 
@@ -87,30 +118,29 @@ func (ixr *Indexer) IndexEVMLogs(ctx context.Context, query ethereum.FilterQuery
 	}
 
 	for fromBlock <= currentBlock {
-		toBlock := min(fromBlock+maxBlocksDistance-1, currentBlock)
+		toBlock := min(fromBlock+ixr.config.MaxBlocksDistance-1, currentBlock)
 		query.FromBlock = new(big.Int).SetUint64(fromBlock)
 		query.ToBlock = new(big.Int).SetUint64(toBlock)
 
-		logs, err := ixr.client.FilterLogs(ctx, query)
+		logs, err := ixr.client.FilterLogs(sinkCtx, query)
 		if err != nil {
 			return fmt.Errorf("filter logs: %w", err)
 		}
 
-		if err := ixr.handleLogs(ctx, logs, toBlock, handler); err != nil {
+		if err := ixr.handleLogs(sinkCtx, logs, toBlock, handler); err != nil {
 			return fmt.Errorf("handle logs: %w", err)
 		}
 
 		fromBlock = toBlock + 1
-
-		if ctx.Err() != nil {
-			return ctx.Err()
+		if sinkCtx.Err() != nil {
+			return context.Cause(sinkCtx)
 		}
 
 		// start subscription when we are close to the current block
 		// we need to start subscription in the cycle to avoid missing logs because
 		// ethereum.FilterQuery.ToBlock is ignored by the server
-		if !subscriptionStarted && currentBlock-fromBlock <= maxBlocksDistance {
-			subscriptionStarted = startSubscription(ctx, query, sink)
+		if !subscriptionStarted && currentBlock-fromBlock <= ixr.config.MaxBlocksDistance {
+			subscriptionStarted = startSubscription(sinkCtx, sinkCancel, query, sink)
 
 			// query latest block number after the subscription started to avoid missing logs
 			if currentBlock, err = ixr.client.BlockNumber(ctx); err != nil {
@@ -120,10 +150,10 @@ func (ixr *Indexer) IndexEVMLogs(ctx context.Context, query ethereum.FilterQuery
 	}
 
 	if !subscriptionStarted {
-		startSubscription(ctx, query, sink)
+		startSubscription(sinkCtx, sinkCancel, query, sink)
 	}
 
-	return ixr.runSinkIndexation(ctx, sink, fromBlock, handler)
+	return ixr.runSinkIndexation(sinkCtx, sink, fromBlock, handler)
 }
 
 // runSinkIndexation runs sink indexation for the provided query and start block.
@@ -134,7 +164,9 @@ func (ixr *Indexer) runSinkIndexation(
 	fromBlock uint64,
 	handler JobHandler,
 ) error {
-	ticker := time.NewTicker(sinkProgressTick)
+	ixr.logger.Info("job switched to WebSocket subscription", "from block", fromBlock)
+
+	ticker := time.NewTicker(ixr.config.SinkProgressTick)
 
 	for {
 		select {
@@ -143,10 +175,13 @@ func (ixr *Indexer) runSinkIndexation(
 			return context.Cause(ctx)
 
 		case <-ticker.C:
-			currentBlock, err := ixr.client.BlockNumber(ctx)
+			ctxGetBlock, getBlockCancel := context.WithTimeout(ctx, getBlockTimeout)
+			currentBlock, err := ixr.client.BlockNumber(ctxGetBlock)
 			if err != nil {
+				getBlockCancel()
 				return fmt.Errorf("get current block number: %w", err)
 			}
+			getBlockCancel()
 
 			ixr.logger.Info("indexer status", "current block", currentBlock)
 
@@ -214,7 +249,7 @@ func (ixr *Indexer) subscribeToEvents(
 	defer cancel(nil)
 
 	subscriptionQuery := ethereum.FilterQuery{
-		FromBlock: query.FromBlock,
+		//FromBlock: query.FromBlock,
 		Addresses: query.Addresses,
 		Topics:    query.Topics,
 	}
@@ -222,6 +257,7 @@ func (ixr *Indexer) subscribeToEvents(
 	subscription, err := ixr.client.SubscribeFilterLogs(ctx, subscriptionQuery, sink)
 	if err != nil {
 		cancel(fmt.Errorf("create subscription: %w", err))
+		close(started)
 		return
 	}
 	defer subscription.Unsubscribe()

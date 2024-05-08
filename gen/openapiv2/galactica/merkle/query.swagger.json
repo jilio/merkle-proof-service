@@ -16,15 +16,15 @@
     "application/json"
   ],
   "paths": {
-    "/v1/galactica/merkle/empty_index/{registry}": {
+    "/v1/galactica/merkle/empty_proof/{registry}": {
       "get": {
-        "summary": "GetEmptyIndex queries the empty leaf index in the merkle tree.",
-        "operationId": "GetEmptyIndex",
+        "summary": "GetEmptyLeafProof queries the proof of the any empty leaf in the merkle tree.",
+        "operationId": "GetEmptyLeafProof",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/galactica.merkle.GetEmptyIndexResponse"
+              "$ref": "#/definitions/galactica.merkle.GetEmptyLeafProofResponse"
             }
           },
           "default": {
@@ -89,16 +89,15 @@
     }
   },
   "definitions": {
-    "galactica.merkle.GetEmptyIndexResponse": {
+    "galactica.merkle.GetEmptyLeafProofResponse": {
       "type": "object",
       "properties": {
-        "index": {
-          "type": "integer",
-          "format": "int64",
-          "description": "index is the empty leaf index."
+        "proof": {
+          "$ref": "#/definitions/galactica.merkle.Proof",
+          "description": "proof is the merkle proof of the empty leaf."
         }
       },
-      "description": "GetEmptyIndexResponse is the response type for the Query.GetEmptyIndex method."
+      "description": "GetEmptyIndexResponse is the response type for the Query.GetEmptyLeafProof method."
     },
     "galactica.merkle.Proof": {
       "type": "object",

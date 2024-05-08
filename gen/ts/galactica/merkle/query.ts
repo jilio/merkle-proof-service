@@ -1,5 +1,4 @@
 /* eslint-disable */
-// @ts-ignore
 import * as _m0 from "protobufjs/minimal";
 
 export const protobufPackage = "galactica.merkle";
@@ -18,16 +17,16 @@ export interface QueryProofResponse {
   proof: Proof | undefined;
 }
 
-/** GetEmptyIndexRequest is the request type for the Query.GetEmptyIndex method. */
-export interface GetEmptyIndexRequest {
+/** GetEmptyLeafProofRequest is the request type for the Query.GetEmptyLeafProof method. */
+export interface GetEmptyLeafProofRequest {
   /** registry is the ZkCertificateRegistry hex address, which starts with 0x. */
   registry: string;
 }
 
-/** GetEmptyIndexResponse is the response type for the Query.GetEmptyIndex method. */
-export interface GetEmptyIndexResponse {
-  /** index is the empty leaf index. */
-  index: number;
+/** GetEmptyIndexResponse is the response type for the Query.GetEmptyLeafProof method. */
+export interface GetEmptyLeafProofResponse {
+  /** proof is the merkle proof of the empty leaf. */
+  proof: Proof | undefined;
 }
 
 /** Proof is the merkle proof. */
@@ -173,22 +172,22 @@ export const QueryProofResponse = {
   },
 };
 
-function createBaseGetEmptyIndexRequest(): GetEmptyIndexRequest {
+function createBaseGetEmptyLeafProofRequest(): GetEmptyLeafProofRequest {
   return { registry: "" };
 }
 
-export const GetEmptyIndexRequest = {
-  encode(message: GetEmptyIndexRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+export const GetEmptyLeafProofRequest = {
+  encode(message: GetEmptyLeafProofRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
     if (message.registry !== "") {
       writer.uint32(10).string(message.registry);
     }
     return writer;
   },
 
-  decode(input: _m0.Reader | Uint8Array, length?: number): GetEmptyIndexRequest {
+  decode(input: _m0.Reader | Uint8Array, length?: number): GetEmptyLeafProofRequest {
     const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseGetEmptyIndexRequest();
+    const message = createBaseGetEmptyLeafProofRequest();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -208,11 +207,11 @@ export const GetEmptyIndexRequest = {
     return message;
   },
 
-  fromJSON(object: any): GetEmptyIndexRequest {
+  fromJSON(object: any): GetEmptyLeafProofRequest {
     return { registry: isSet(object.registry) ? globalThis.String(object.registry) : "" };
   },
 
-  toJSON(message: GetEmptyIndexRequest): unknown {
+  toJSON(message: GetEmptyLeafProofRequest): unknown {
     const obj: any = {};
     if (message.registry !== "") {
       obj.registry = message.registry;
@@ -220,41 +219,41 @@ export const GetEmptyIndexRequest = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<GetEmptyIndexRequest>, I>>(base?: I): GetEmptyIndexRequest {
-    return GetEmptyIndexRequest.fromPartial(base ?? ({} as any));
+  create<I extends Exact<DeepPartial<GetEmptyLeafProofRequest>, I>>(base?: I): GetEmptyLeafProofRequest {
+    return GetEmptyLeafProofRequest.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<GetEmptyIndexRequest>, I>>(object: I): GetEmptyIndexRequest {
-    const message = createBaseGetEmptyIndexRequest();
+  fromPartial<I extends Exact<DeepPartial<GetEmptyLeafProofRequest>, I>>(object: I): GetEmptyLeafProofRequest {
+    const message = createBaseGetEmptyLeafProofRequest();
     message.registry = object.registry ?? "";
     return message;
   },
 };
 
-function createBaseGetEmptyIndexResponse(): GetEmptyIndexResponse {
-  return { index: 0 };
+function createBaseGetEmptyLeafProofResponse(): GetEmptyLeafProofResponse {
+  return { proof: undefined };
 }
 
-export const GetEmptyIndexResponse = {
-  encode(message: GetEmptyIndexResponse, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    if (message.index !== 0) {
-      writer.uint32(8).uint32(message.index);
+export const GetEmptyLeafProofResponse = {
+  encode(message: GetEmptyLeafProofResponse, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.proof !== undefined) {
+      Proof.encode(message.proof, writer.uint32(10).fork()).ldelim();
     }
     return writer;
   },
 
-  decode(input: _m0.Reader | Uint8Array, length?: number): GetEmptyIndexResponse {
+  decode(input: _m0.Reader | Uint8Array, length?: number): GetEmptyLeafProofResponse {
     const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseGetEmptyIndexResponse();
+    const message = createBaseGetEmptyLeafProofResponse();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          if (tag !== 8) {
+          if (tag !== 10) {
             break;
           }
 
-          message.index = reader.uint32();
+          message.proof = Proof.decode(reader, reader.uint32());
           continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
@@ -265,24 +264,24 @@ export const GetEmptyIndexResponse = {
     return message;
   },
 
-  fromJSON(object: any): GetEmptyIndexResponse {
-    return { index: isSet(object.index) ? globalThis.Number(object.index) : 0 };
+  fromJSON(object: any): GetEmptyLeafProofResponse {
+    return { proof: isSet(object.proof) ? Proof.fromJSON(object.proof) : undefined };
   },
 
-  toJSON(message: GetEmptyIndexResponse): unknown {
+  toJSON(message: GetEmptyLeafProofResponse): unknown {
     const obj: any = {};
-    if (message.index !== 0) {
-      obj.index = Math.round(message.index);
+    if (message.proof !== undefined) {
+      obj.proof = Proof.toJSON(message.proof);
     }
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<GetEmptyIndexResponse>, I>>(base?: I): GetEmptyIndexResponse {
-    return GetEmptyIndexResponse.fromPartial(base ?? ({} as any));
+  create<I extends Exact<DeepPartial<GetEmptyLeafProofResponse>, I>>(base?: I): GetEmptyLeafProofResponse {
+    return GetEmptyLeafProofResponse.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<GetEmptyIndexResponse>, I>>(object: I): GetEmptyIndexResponse {
-    const message = createBaseGetEmptyIndexResponse();
-    message.index = object.index ?? 0;
+  fromPartial<I extends Exact<DeepPartial<GetEmptyLeafProofResponse>, I>>(object: I): GetEmptyLeafProofResponse {
+    const message = createBaseGetEmptyLeafProofResponse();
+    message.proof = (object.proof !== undefined && object.proof !== null) ? Proof.fromPartial(object.proof) : undefined;
     return message;
   },
 };
@@ -395,8 +394,8 @@ export const Proof = {
 export interface Query {
   /** Proof queries the proof of a leaf in the merkle tree. */
   Proof(request: QueryProofRequest): Promise<QueryProofResponse>;
-  /** GetEmptyIndex queries the empty leaf index in the merkle tree. */
-  GetEmptyIndex(request: GetEmptyIndexRequest): Promise<GetEmptyIndexResponse>;
+  /** GetEmptyLeafProof queries the proof of the any empty leaf in the merkle tree. */
+  GetEmptyLeafProof(request: GetEmptyLeafProofRequest): Promise<GetEmptyLeafProofResponse>;
 }
 
 export const QueryServiceName = "galactica.merkle.Query";
@@ -407,7 +406,7 @@ export class QueryClientImpl implements Query {
     this.service = opts?.service || QueryServiceName;
     this.rpc = rpc;
     this.Proof = this.Proof.bind(this);
-    this.GetEmptyIndex = this.GetEmptyIndex.bind(this);
+    this.GetEmptyLeafProof = this.GetEmptyLeafProof.bind(this);
   }
   Proof(request: QueryProofRequest): Promise<QueryProofResponse> {
     const data = QueryProofRequest.encode(request).finish();
@@ -415,10 +414,10 @@ export class QueryClientImpl implements Query {
     return promise.then((data) => QueryProofResponse.decode(_m0.Reader.create(data)));
   }
 
-  GetEmptyIndex(request: GetEmptyIndexRequest): Promise<GetEmptyIndexResponse> {
-    const data = GetEmptyIndexRequest.encode(request).finish();
-    const promise = this.rpc.request(this.service, "GetEmptyIndex", data);
-    return promise.then((data) => GetEmptyIndexResponse.decode(_m0.Reader.create(data)));
+  GetEmptyLeafProof(request: GetEmptyLeafProofRequest): Promise<GetEmptyLeafProofResponse> {
+    const data = GetEmptyLeafProofRequest.encode(request).finish();
+    const promise = this.rpc.request(this.service, "GetEmptyLeafProof", data);
+    return promise.then((data) => GetEmptyLeafProofResponse.decode(_m0.Reader.create(data)));
   }
 }
 

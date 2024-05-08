@@ -30,74 +30,46 @@ import (
 	"github.com/holiman/uint256"
 
 	"github.com/Galactica-corp/merkle-proof-service/internal/contract/ZkCertificateRegistry"
-	"github.com/Galactica-corp/merkle-proof-service/internal/merkle"
+	"github.com/Galactica-corp/merkle-proof-service/internal/zkregistry"
 )
 
 const (
-	eventZKCertificateAddition   = "zkCertificateAddition"
-	eventZKCertificateRevocation = "zkCertificateRevocation"
-
-	ctxLeavesBufferKey ctxKey = "leaves_buffer"
+	ctxOperationsBufferKey ctxKey = "operations"
 )
 
 type (
 	ctxKey string
 
-	MerkleTreeLeavesInserter interface {
-		InsertLeaves(store merkle.TreeLeafGetterSetter, leaves []merkle.Leaf) error
-	}
-
-	LeafIndexSetter interface {
-		SetLeafIndex(
-			batch db.Batch,
-			treeIndex merkle.TreeIndex,
-			leafValue *uint256.Int,
-			leafIndex merkle.LeafIndex,
-		) error
-	}
-
-	JobDescriptorWithTreeIndex struct {
-		JobDescriptor
-		TreeIndex merkle.TreeIndex
-	}
-
 	ZkCertificateRegistryJob struct {
-		jobDescriptor JobDescriptorWithTreeIndex
+		jobDescriptor JobDescriptor
 		jobUpdater    JobUpdater
 		batchCreator  DBBatchCreator
-
-		merkleTree MerkleTreeLeavesInserter
-		leafIndex  LeafIndexSetter
-		treeMutex  TreeMutex
+		registry      *zkregistry.ZKCertificateRegistry
 
 		logger log.Logger
 		parser *ZkCertificateRegistry.ZkCertificateRegistryFilterer
 	}
 )
 
-func NewZkCertificateRegistry(
-	jobDescriptor JobDescriptorWithTreeIndex,
+func NewZkCertificateRegistryJob(
+	jobDescriptor JobDescriptor,
 	jobUpdater JobUpdater,
 	dbBatchCreator DBBatchCreator,
-	merkleTree MerkleTreeLeavesInserter,
-	leafIndex LeafIndexSetter,
-	treeMutex TreeMutex,
+	registry *zkregistry.ZKCertificateRegistry,
 	logger log.Logger,
 ) *ZkCertificateRegistryJob {
 	return &ZkCertificateRegistryJob{
 		jobDescriptor: jobDescriptor,
 		jobUpdater:    jobUpdater,
 		batchCreator:  dbBatchCreator,
-		merkleTree:    merkleTree,
-		leafIndex:     leafIndex,
-		treeMutex:     treeMutex,
+		registry:      registry,
 		logger:        logger,
 	}
 }
 
 // PrepareContext prepares the context for the job.
 func (job *ZkCertificateRegistryJob) PrepareContext(ctx context.Context) (context.Context, error) {
-	return WithLeavesBuffer(ctx, merkle.NewLeavesBuffer()), nil
+	return WithOperationsBuffer(ctx, zkregistry.NewOperationsBuffer()), nil
 }
 
 // HandleEVMLog handles the EVM log and updates the leaves buffer.
@@ -114,12 +86,12 @@ func (job *ZkCertificateRegistryJob) HandleEVMLog(ctx context.Context, log types
 	}
 
 	switch log.Topics[0] {
-	case contractABI.Events[eventZKCertificateAddition].ID:
+	case contractABI.Events[zkregistry.EventZKCertificateAddition].ID:
 		if err := job.handleZkCertificateAdditionLog(ctx, log); err != nil {
 			return fmt.Errorf("handle ZkCertificateAddition log: %w", err)
 		}
 
-	case contractABI.Events[eventZKCertificateRevocation].ID:
+	case contractABI.Events[zkregistry.EventZKCertificateRevocation].ID:
 		if err := job.handleZkCertificateRevocationLog(ctx, log); err != nil {
 			return fmt.Errorf("handle ZkCertificateRevocation log: %w", err)
 		}
@@ -131,49 +103,37 @@ func (job *ZkCertificateRegistryJob) HandleEVMLog(ctx context.Context, log types
 	return nil
 }
 
-// Commit commits the leaves buffer to the merkle tree and the database.
+// Commit commits the leaves buffer to the database.
 func (job *ZkCertificateRegistryJob) Commit(ctx context.Context, block uint64) error {
-	leavesBuffer, ok := LeavesBufferFromContext(ctx)
+	operationsBuffer, ok := OperationsBufferFromContext(ctx)
 	if !ok {
 		return fmt.Errorf("leaves buffer not found in context")
 	}
 
-	treeIndex := job.jobDescriptor.TreeIndex
 	batch := job.batchCreator.NewBatch()
-	leaves := leavesBuffer.Leaves()
+	operations := operationsBuffer.Operations()
 
-	if len(leaves) > 0 {
-		batchWithBuffer := merkle.NewBatchWithLeavesBuffer(batch, treeIndex)
-
-		// insert leaves into the merkle tree
-		if err := job.merkleTree.InsertLeaves(batchWithBuffer, leaves); err != nil {
+	if len(operations) > 0 {
+		if err := job.registry.CommitOperations(ctx, batch, operations); err != nil {
 			return fmt.Errorf("insert leaves: %w", err)
-		}
-
-		// set leaf index for each leaf
-		for _, leaf := range leaves {
-			if err := job.leafIndex.SetLeafIndex(batch, treeIndex, leaf.Value, leaf.Index); err != nil {
-				return fmt.Errorf("set leaf index: %w", err)
-			}
 		}
 
 		job.logger.Info(
 			"job committing leaves",
 			"job", job.jobDescriptor.String(),
-			"leaves", len(leaves),
+			"operations", len(operations),
 			"block", block,
 		)
 	}
 
 	// update the job's current block in order to resume from the last known block later
 	if err := job.jobUpdater.UpsertJob(ctx, batch, Job{
-		JobDescriptor: job.jobDescriptor.JobDescriptor,
+		JobDescriptor: job.jobDescriptor,
 		CurrentBlock:  block,
 	}); err != nil {
 		return fmt.Errorf("update job's current startBlock: %w", err)
 	}
 
-	// write the batch with a lock on the tree index
 	if err := job.writeBatchWithLock(batch); err != nil {
 		return fmt.Errorf("write batch with lock: %w", err)
 	}
@@ -186,8 +146,8 @@ func (job *ZkCertificateRegistryJob) Commit(ctx context.Context, block uint64) e
 // writeBatchWithLock writes the batch to the database with a lock on the tree index.
 func (job *ZkCertificateRegistryJob) writeBatchWithLock(batch db.Batch) error {
 	// we need to lock the tree index to prevent reading the tree while it is being updated
-	job.treeMutex.Lock(job.jobDescriptor.TreeIndex)
-	defer job.treeMutex.Unlock(job.jobDescriptor.TreeIndex)
+	job.registry.Mutex().Lock()
+	defer job.registry.Mutex().Unlock()
 
 	return batch.WriteSync()
 }
@@ -201,8 +161,8 @@ func (job *ZkCertificateRegistryJob) FilterQuery() (ethereum.FilterQuery, error)
 
 	topics, err := abi.MakeTopics(
 		[]interface{}{
-			contractABI.Events[eventZKCertificateAddition].ID,
-			contractABI.Events[eventZKCertificateRevocation].ID,
+			contractABI.Events[zkregistry.EventZKCertificateAddition].ID,
+			contractABI.Events[zkregistry.EventZKCertificateRevocation].ID,
 		},
 	)
 	if err != nil {
@@ -229,27 +189,20 @@ func (job *ZkCertificateRegistryJob) handleZkCertificateAdditionLog(ctx context.
 		return fmt.Errorf("parse zkCertificateAddition: %w", err)
 	}
 
-	//guardianAddress := zkCertificateAddition.Guardian
-	// TODO: save guardian address to the database?
-
 	indexU64 := zkCertificateAddition.Index.Uint64()
-	if indexU64 >= merkle.MaxLeaves {
-		return fmt.Errorf("zkCertificateAddition: index %d is out of bounds", indexU64)
-	}
-
-	index := merkle.LeafIndex(indexU64)
+	index := zkregistry.TreeLeafIndex(indexU64)
 	leaf, overflow := uint256.FromBig(new(big.Int).SetBytes(zkCertificateAddition.ZkCertificateLeafHash[:]))
 	if overflow {
 		return fmt.Errorf("zkCertificateAddition: leaf hash overflow for index %d", index)
 	}
 
-	leavesBuffer, ok := LeavesBufferFromContext(ctx)
+	operationsBuffer, ok := OperationsBufferFromContext(ctx)
 	if !ok {
-		return fmt.Errorf("leaves buffer not found in context")
+		return fmt.Errorf("operations buffer not found in context")
 	}
 
-	if err := leavesBuffer.AppendLeaf(index, leaf); err != nil {
-		return fmt.Errorf("append leaf to buffer: %w", err)
+	if err := operationsBuffer.AppendAddition(index, leaf); err != nil {
+		return fmt.Errorf("append operation to buffer: %w", err)
 	}
 
 	job.logger.Info("found zkCertificateAddition", "index", index, "value", leaf.String())
@@ -270,26 +223,22 @@ func (job *ZkCertificateRegistryJob) handleZkCertificateRevocationLog(ctx contex
 	}
 
 	indexU64 := zkKYCRecordRevocation.Index.Uint64()
-	if indexU64 >= merkle.MaxLeaves {
-		return fmt.Errorf("zkKYCRecordRevocation: index %d is out of bounds", indexU64)
-	}
-
-	index := merkle.LeafIndex(indexU64)
+	index := zkregistry.TreeLeafIndex(indexU64)
 	leaf, overflow := uint256.FromBig(new(big.Int).SetBytes(zkKYCRecordRevocation.ZkCertificateLeafHash[:]))
 	if overflow {
 		return fmt.Errorf("ZkCertificateRevocation: leaf hash overflow for index %d", index)
 	}
 
-	leavesBuffer, ok := LeavesBufferFromContext(ctx)
+	leavesBuffer, ok := OperationsBufferFromContext(ctx)
 	if !ok {
-		return fmt.Errorf("leaves buffer not found in context")
+		return fmt.Errorf("operations buffer not found in context")
 	}
 
-	if err := leavesBuffer.AppendLeaf(index, leaf); err != nil {
-		return fmt.Errorf("append leaf to buffer: %w", err)
+	if err := leavesBuffer.AppendRevocation(index, leaf); err != nil {
+		return fmt.Errorf("append operation to buffer: %w", err)
 	}
 
-	job.logger.Info("found ZkCertificateRevocation", "index", index)
+	job.logger.Info("found ZkCertificateRevocation", "index", index, "value", leaf.String())
 
 	return nil
 }
@@ -310,13 +259,13 @@ func (job *ZkCertificateRegistryJob) getParserLazy() (*ZkCertificateRegistry.ZkC
 	return parser, err
 }
 
-// WithLeavesBuffer sets the leaves buffer in the context.
-func WithLeavesBuffer(ctx context.Context, buffer *merkle.LeavesBuffer) context.Context {
-	return context.WithValue(ctx, ctxLeavesBufferKey, buffer)
+// WithOperationsBuffer sets the leaves buffer in the context.
+func WithOperationsBuffer(ctx context.Context, buffer *zkregistry.OperationsBuffer) context.Context {
+	return context.WithValue(ctx, ctxOperationsBufferKey, buffer)
 }
 
-// LeavesBufferFromContext returns the leaves buffer from the context.
-func LeavesBufferFromContext(ctx context.Context) (*merkle.LeavesBuffer, bool) {
-	buffer, ok := ctx.Value(ctxLeavesBufferKey).(*merkle.LeavesBuffer)
+// OperationsBufferFromContext returns the leaves buffer from the context.
+func OperationsBufferFromContext(ctx context.Context) (*zkregistry.OperationsBuffer, bool) {
+	buffer, ok := ctx.Value(ctxOperationsBufferKey).(*zkregistry.OperationsBuffer)
 	return buffer, ok
 }

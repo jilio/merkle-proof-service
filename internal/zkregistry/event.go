@@ -14,18 +14,9 @@
  * limitations under the License.
  */
 
-package storage
+package zkregistry
 
 const (
-	PrefixLength = 1
-)
-
-var (
-	JobKeyPrefix              = byte(0x00)
-	MerkleTreeLeafKeyPrefix   = byte(0x01)
-	MerkleTreeLeafIndexPrefix = byte(0x02)
-
-	ZKCertificateRegistryKeyPrefix     = byte(0x03)
-	ZKCertificateRegistryIndexPrefix   = byte(0x04)
-	ZKCertificateRegistryCounterPrefix = byte(0x05)
+	EventZKCertificateAddition   = "zkCertificateAddition"
+	EventZKCertificateRevocation = "zkCertificateRevocation"
 )

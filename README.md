@@ -52,6 +52,10 @@ Here are the available flags for the `start` command:
 - `--evm-rpc string`: EVM RPC endpoint (default "ws://localhost:8546")
 - `--grpc-gateway.address string`: gRPC gateway server address (default "localhost:8480")
 - `--grpc.address string`: gRPC server address (default "localhost:50651")
+- `--indexer.max_blocks_distance uint`: max blocks distance to retrieve logs from the EVM node (default 10000)
+- `--indexer.sink_channel_size uint`: indexer sink channel buffer size (default 100)
+- `--indexer.sink_progress_tick duration`: indexer sink progress tick duration (default 5s)
+- `--zk_certificate_registry strings`: zk certificate registry contract addresses list
 
 And the global flags:
 
@@ -71,8 +75,8 @@ The `gRPC` interface is available at `http://localhost:50651`. You cain find the
 
 The service provides the following methods:
 
-- `Proof`: Retrieves the Merkle proof for a given contract address and leaf index.
-- `GetEmptyIndex`: Retrieves the random empty index for a given contract address.
+- `Proof`: Retrieves the Merkle proof for a given contract address and leaf value.
+- `GetEmptyLeafProof`: Retrieves the random empty index with the Merkle proof for a given contract address.
 
 ### gRPC-gateway
 
@@ -80,8 +84,8 @@ By default, the `gRPC-gateway` interface is available at `http://localhost:8480`
 
 The service provides the following endpoints:
 
-- `GET /v1/galactica/merkle/proof/{registry}/{leaf}`: Retrieves the Merkle proof for a given contract address and leaf index.
-- `GET /v1/galactica/merkle/empty_index/{registry}`: Retrieves the random empty index for a given contract address.
+- `GET /v1/galactica/merkle/proof/{registry}/{leaf}`: Retrieves the Merkle proof for a given contract address and leaf value.
+- `GET /v1/galactica/merkle/empty_proof/{registry}`: Retrieves the random empty index with the Merkle proof for a given contract address.
 
 ## Configuration
 
@@ -97,10 +101,8 @@ grpc:
   address: localhost:50651
 grpc_gateway:
   address: localhost:8480
-jobs:
-  - address: 0x<contract_address>
-    contract: ZkCertificateRegistry
-    start_block: <start_block>
+zk_certificate_registry:
+   - 0xbc196948e8c1Bc416aEaCf309a63DCEFfdf0cE31
 ```
 
 ### Ethereum contract configuration
@@ -140,6 +142,8 @@ docker run -d \
   -v $HOME/.galacticad-merkle:/root/.galacticad-merkle \
    Galactica-corp/merkle-proof-service
 ```
+
+docker run -d --name merkle-proof-service -p 50651:50651 -p 8480:8480 -e EVM_RPC=wss://evm-rpc-ws-andromeda.galactica.com -e DB_BACKEND=pebbledb -v ./tmp-galacticad-merkle:/root/.galacticad-merkle Galactica-corp/merkle-proof-service
 
 This command will start the Merkle Proof Service in a Docker container with the default configuration. You can customize the configuration by passing environment variables to the `docker run` command.
 

@@ -20,8 +20,8 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Query_Proof_FullMethodName         = "/galactica.merkle.Query/Proof"
-	Query_GetEmptyIndex_FullMethodName = "/galactica.merkle.Query/GetEmptyIndex"
+	Query_Proof_FullMethodName             = "/galactica.merkle.Query/Proof"
+	Query_GetEmptyLeafProof_FullMethodName = "/galactica.merkle.Query/GetEmptyLeafProof"
 )
 
 // QueryClient is the client API for Query service.
@@ -30,8 +30,8 @@ const (
 type QueryClient interface {
 	// Proof queries the proof of a leaf in the merkle tree.
 	Proof(ctx context.Context, in *QueryProofRequest, opts ...grpc.CallOption) (*QueryProofResponse, error)
-	// GetEmptyIndex queries the empty leaf index in the merkle tree.
-	GetEmptyIndex(ctx context.Context, in *GetEmptyIndexRequest, opts ...grpc.CallOption) (*GetEmptyIndexResponse, error)
+	// GetEmptyLeafProof queries the proof of the any empty leaf in the merkle tree.
+	GetEmptyLeafProof(ctx context.Context, in *GetEmptyLeafProofRequest, opts ...grpc.CallOption) (*GetEmptyLeafProofResponse, error)
 }
 
 type queryClient struct {
@@ -51,9 +51,9 @@ func (c *queryClient) Proof(ctx context.Context, in *QueryProofRequest, opts ...
 	return out, nil
 }
 
-func (c *queryClient) GetEmptyIndex(ctx context.Context, in *GetEmptyIndexRequest, opts ...grpc.CallOption) (*GetEmptyIndexResponse, error) {
-	out := new(GetEmptyIndexResponse)
-	err := c.cc.Invoke(ctx, Query_GetEmptyIndex_FullMethodName, in, out, opts...)
+func (c *queryClient) GetEmptyLeafProof(ctx context.Context, in *GetEmptyLeafProofRequest, opts ...grpc.CallOption) (*GetEmptyLeafProofResponse, error) {
+	out := new(GetEmptyLeafProofResponse)
+	err := c.cc.Invoke(ctx, Query_GetEmptyLeafProof_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -66,8 +66,8 @@ func (c *queryClient) GetEmptyIndex(ctx context.Context, in *GetEmptyIndexReques
 type QueryServer interface {
 	// Proof queries the proof of a leaf in the merkle tree.
 	Proof(context.Context, *QueryProofRequest) (*QueryProofResponse, error)
-	// GetEmptyIndex queries the empty leaf index in the merkle tree.
-	GetEmptyIndex(context.Context, *GetEmptyIndexRequest) (*GetEmptyIndexResponse, error)
+	// GetEmptyLeafProof queries the proof of the any empty leaf in the merkle tree.
+	GetEmptyLeafProof(context.Context, *GetEmptyLeafProofRequest) (*GetEmptyLeafProofResponse, error)
 	mustEmbedUnimplementedQueryServer()
 }
 
@@ -78,8 +78,8 @@ type UnimplementedQueryServer struct {
 func (UnimplementedQueryServer) Proof(context.Context, *QueryProofRequest) (*QueryProofResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Proof not implemented")
 }
-func (UnimplementedQueryServer) GetEmptyIndex(context.Context, *GetEmptyIndexRequest) (*GetEmptyIndexResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetEmptyIndex not implemented")
+func (UnimplementedQueryServer) GetEmptyLeafProof(context.Context, *GetEmptyLeafProofRequest) (*GetEmptyLeafProofResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetEmptyLeafProof not implemented")
 }
 func (UnimplementedQueryServer) mustEmbedUnimplementedQueryServer() {}
 
@@ -112,20 +112,20 @@ func _Query_Proof_Handler(srv interface{}, ctx context.Context, dec func(interfa
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Query_GetEmptyIndex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetEmptyIndexRequest)
+func _Query_GetEmptyLeafProof_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetEmptyLeafProofRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(QueryServer).GetEmptyIndex(ctx, in)
+		return srv.(QueryServer).GetEmptyLeafProof(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Query_GetEmptyIndex_FullMethodName,
+		FullMethod: Query_GetEmptyLeafProof_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(QueryServer).GetEmptyIndex(ctx, req.(*GetEmptyIndexRequest))
+		return srv.(QueryServer).GetEmptyLeafProof(ctx, req.(*GetEmptyLeafProofRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -142,8 +142,8 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Query_Proof_Handler,
 		},
 		{
-			MethodName: "GetEmptyIndex",
-			Handler:    _Query_GetEmptyIndex_Handler,
+			MethodName: "GetEmptyLeafProof",
+			Handler:    _Query_GetEmptyLeafProof_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

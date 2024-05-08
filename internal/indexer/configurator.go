@@ -29,7 +29,7 @@ import (
 
 type (
 	JobHandlersProducer interface {
-		Produce(jobDescriptor JobDescriptor) (JobHandler, error)
+		Produce(ctx context.Context, jobDescriptor JobDescriptor) (JobHandler, error)
 	}
 
 	EVMIndexer interface {
@@ -100,7 +100,7 @@ func InitConfiguratorFromStorage(
 // StartJob starts new job for the indexer.
 // Additionally, it's responsible for saving progress (last known block) of this job, so it can resume paused job later.
 func (c *Configurator) StartJob(ctx context.Context, jobDescriptor JobDescriptor, startBlock uint64) error {
-	jobHandler, err := c.jobHandlersProducer.Produce(jobDescriptor)
+	jobHandler, err := c.jobHandlersProducer.Produce(ctx, jobDescriptor)
 	if err != nil {
 		return fmt.Errorf("create event handler: %w", err)
 	}
@@ -122,6 +122,13 @@ func (c *Configurator) StartJob(ctx context.Context, jobDescriptor JobDescriptor
 		c.logger.Info("start job", "job", jobDescriptor.String(), "from block", startBlock)
 		return c.indexer.IndexEVMLogs(ctx, filterQuery, startBlock, jobHandler)
 	})
+
+	go func() {
+		if err := wg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
+			c.logger.Error("job finished with error", "error", err, "job", jobDescriptor.String())
+		}
+		cancel()
+	}()
 
 	return nil
 }
@@ -184,14 +191,14 @@ func (c *Configurator) ReloadConfig(ctx context.Context, config []JobDescriptor)
 	return nil
 }
 
-func (c *Configurator) Wait() chan struct{} {
-	done := make(chan struct{})
+func (c *Configurator) Wait() chan error {
+	done := make(chan error)
 	go func() {
 		defer close(done)
 
 		for _, job := range c.jobs {
 			if err := job.WG.Wait(); err != nil && !errors.Is(err, context.Canceled) {
-				c.logger.Error("wait for job", "error", err)
+				done <- err
 			}
 		}
 	}()

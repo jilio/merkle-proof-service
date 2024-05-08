@@ -37,7 +37,6 @@ const (
 	evmRpcFlag  = "evm-rpc"
 	evmRpcEnv   = "EVM_RPC"
 	evmRpcViper = "evm_rpc"
-	jobsViper   = "jobs"
 
 	grpcAddressFlag  = "grpc.address"
 	grpcAddressViper = "grpc.address"
@@ -46,6 +45,12 @@ const (
 	grpcGatewayAddressFlag  = "grpc-gateway.address"
 	grpcGatewayAddressViper = "grpc_gateway.address"
 	grpcGatewayAddressEnv   = "GRPC_GATEWAY_ADDRESS"
+
+	indexerMaxBlocksDistanceFlag = "indexer.max_blocks_distance"
+	indexerSinkChannelSizeFlag   = "indexer.sink_channel_size"
+	indexerSinkProgressTickFlag  = "indexer.sink_progress_tick"
+
+	zkCertificateRegistryViper = "zk_certificate_registry"
 
 	defaultEvmRpc = "ws://localhost:8546"
 
@@ -80,23 +85,22 @@ func CreateStartCmd() *cobra.Command {
 
 			dbPath := filepath.Join(homeDir, dbFolder)
 
-			jobs, err := getIndexerJobs()
+			zkCertificateRegistry, err := getZkCertificateRegistry()
 			if err != nil {
-				return fmt.Errorf("get indexer jobs: %w", err)
-			}
-			for _, job := range jobs {
-				logger.Info("job found in config", "job", job.String())
+				return fmt.Errorf("zk certificate registry: %w", err)
 			}
 
 			appConfig := pkgindexer.ApplicationConfig{
-				EvmRpc:      evmRpc,
-				DbPath:      dbPath,
-				DbBackend:   dbBackend,
-				Jobs:        jobs,
-				QueryServer: getQueryServerConfig(),
+				EvmRpc:                evmRpc,
+				DbPath:                dbPath,
+				DbBackend:             dbBackend,
+				ZkCertificateRegistry: zkCertificateRegistry,
+				QueryServer:           getQueryServerConfig(),
+				IndexerConfig:         getIndexConfig(),
 			}
 
 			if err := pkgindexer.StartApplication(cmd.Context(), appConfig, logger); err != nil {
+				logger.Error("start indexer application", "error", err)
 				return fmt.Errorf("start indexer server: %w", err)
 			}
 
@@ -115,70 +119,40 @@ func initFlags(indexerStartCmd *cobra.Command) {
 	indexerStartCmd.Flags().String(evmRpcFlag, defaultEvmRpc, "EVM RPC endpoint")
 	indexerStartCmd.Flags().String(grpcAddressFlag, query.GrpcServerAddr, "gRPC server address")
 	indexerStartCmd.Flags().String(grpcGatewayAddressFlag, query.GatewayAddr, "gRPC gateway address")
+	indexerStartCmd.Flags().Uint64(indexerMaxBlocksDistanceFlag, indexer.MaxBlocksDistance, "max blocks distance to retrieve logs from the EVM node")
+	indexerStartCmd.Flags().Uint(indexerSinkChannelSizeFlag, indexer.SinkSize, "indexer sink channel buffer size")
+	indexerStartCmd.Flags().Duration(indexerSinkProgressTickFlag, indexer.SinkProgressTick, "indexer sink progress tick duration")
+	indexerStartCmd.Flags().StringSlice(zkCertificateRegistryViper, []string{}, "zk certificate registry contract addresses list")
 
 	utils.MustBindPFlag(viper.GetViper(), evmRpcViper, indexerStartCmd.Flags().Lookup(evmRpcFlag))
 	utils.MustBindPFlag(viper.GetViper(), grpcAddressViper, indexerStartCmd.Flags().Lookup(grpcAddressFlag))
 	utils.MustBindPFlag(viper.GetViper(), grpcGatewayAddressViper, indexerStartCmd.Flags().Lookup(grpcGatewayAddressFlag))
+	utils.MustBindPFlag(viper.GetViper(), indexerMaxBlocksDistanceFlag, indexerStartCmd.Flags().Lookup(indexerMaxBlocksDistanceFlag))
+	utils.MustBindPFlag(viper.GetViper(), indexerSinkChannelSizeFlag, indexerStartCmd.Flags().Lookup(indexerSinkChannelSizeFlag))
+	utils.MustBindPFlag(viper.GetViper(), indexerSinkProgressTickFlag, indexerStartCmd.Flags().Lookup(indexerSinkProgressTickFlag))
+	utils.MustBindPFlag(viper.GetViper(), zkCertificateRegistryViper, indexerStartCmd.Flags().Lookup(zkCertificateRegistryViper))
 
 	viper.MustBindEnv(evmRpcViper, evmRpcEnv)
 	viper.MustBindEnv(grpcAddressViper, grpcAddressEnv)
 	viper.MustBindEnv(grpcGatewayAddressViper, grpcGatewayAddressEnv)
 }
 
-func getIndexerJobs() ([]indexer.JobDescriptor, error) {
-	jobs := viper.Get(jobsViper)
-	if jobs == nil {
+func getZkCertificateRegistry() ([]common.Address, error) {
+	addresses := viper.GetStringSlice(zkCertificateRegistryViper)
+	if len(addresses) == 0 {
 		return nil, nil
 	}
 
-	jobsSlice, ok := jobs.([]interface{})
-	if !ok {
-		return nil, fmt.Errorf("jobs must be an array")
+	var contractAddresses []common.Address
+	for _, address := range addresses {
+		if !common.IsHexAddress(address) {
+			return nil, fmt.Errorf("invalid address: %s", address)
+		}
+
+		contractAddresses = append(contractAddresses, common.HexToAddress(address))
 	}
 
-	var jobDescriptors []indexer.JobDescriptor
-	for _, job := range jobsSlice {
-		jobMap, ok := job.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		// check if address is a valid Ethereum address
-		addressStr, ok := jobMap["address"].(string)
-		if !ok {
-			return nil, fmt.Errorf("address must be a string")
-		}
-
-		if !common.IsHexAddress(addressStr) {
-			return nil, fmt.Errorf("invalid address")
-		}
-
-		// check if contract is a valid indexer contract
-		contractStr, ok := jobMap["contract"].(string)
-		if !ok {
-			return nil, fmt.Errorf("contract must be a string")
-		}
-
-		contract, err := indexer.ContractFromString(contractStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid contract: %w", err)
-		}
-
-		// startBlock is required
-		startBlock, ok := jobMap["start_block"].(int)
-		if !ok {
-			return nil, fmt.Errorf("startBlock must be an integer, got %T", jobMap["startBlock"])
-		}
-
-		jobDescriptor := indexer.JobDescriptor{
-			Address:    common.HexToAddress(addressStr),
-			Contract:   contract,
-			StartBlock: uint64(startBlock),
-		}
-		jobDescriptors = append(jobDescriptors, jobDescriptor)
-	}
-
-	return jobDescriptors, nil
+	return contractAddresses, nil
 }
 
 func getQueryServerConfig() pkgindexer.QueryServerConfig {
@@ -189,5 +163,13 @@ func getQueryServerConfig() pkgindexer.QueryServerConfig {
 		GRPCGateway: struct{ Address string }{
 			Address: viper.GetString(grpcGatewayAddressViper),
 		},
+	}
+}
+
+func getIndexConfig() indexer.Config {
+	return indexer.Config{
+		MaxBlocksDistance: viper.GetUint64(indexerMaxBlocksDistanceFlag),
+		SinkChannelSize:   viper.GetUint(indexerSinkChannelSizeFlag),
+		SinkProgressTick:  viper.GetDuration(indexerSinkProgressTickFlag),
 	}
 }

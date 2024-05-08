@@ -23,35 +23,36 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/Galactica-corp/merkle-proof-service/gen/galactica/merkle"
+	merklegen "github.com/Galactica-corp/merkle-proof-service/gen/galactica/merkle"
 )
 
-func (s *Server) GetEmptyIndex(ctx context.Context, req *merkle.GetEmptyIndexRequest) (*merkle.GetEmptyIndexResponse, error) {
+func (s *Server) GetEmptyLeafProof(ctx context.Context, req *merklegen.GetEmptyLeafProofRequest) (*merklegen.GetEmptyLeafProofResponse, error) {
 	if !common.IsHexAddress(req.Registry) {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid registry address, must be a hex string: %s", req.Registry)
 	}
 
 	address := common.HexToAddress(req.Registry)
-
-	treeIndex, err := s.treeFactory.FindTreeIndex(address)
+	registry, err := s.registryService.ZKCertificateRegistry(ctx, address)
 	if err != nil {
-		s.logger.Error("failed to find address index", "error", err)
-		return nil, status.Errorf(codes.Internal, "failed to find tree index")
+		return nil, status.Errorf(codes.NotFound, "tree not found: %s", req.Registry)
 	}
 
-	tree, err := s.treeFactory.GetTreeByIndex(treeIndex)
+	proofOfEmptyIndex, err := registry.GetRandomEmptyLeafProof(ctx)
 	if err != nil {
-		s.logger.Error("failed to get tree", "error", err)
-		return nil, status.Errorf(codes.Internal, "failed to get tree")
+		return nil, status.Errorf(codes.Internal, "failed to get empty leaf proof, try again")
 	}
 
-	emptyIndex, err := tree.GetRandomEmptyLeafIndex()
-	if err != nil {
-		s.logger.Error("failed to get empty leaf index", "error", err)
-		return nil, status.Errorf(codes.Internal, "failed to get empty leaf index")
+	path := make([]string, len(proofOfEmptyIndex.Path))
+	for i, p := range proofOfEmptyIndex.Path {
+		path[i] = p.String()
 	}
 
-	return &merkle.GetEmptyIndexResponse{
-		Index: uint32(emptyIndex),
+	return &merklegen.GetEmptyLeafProofResponse{
+		Proof: &merklegen.Proof{
+			Leaf:  proofOfEmptyIndex.Leaf.String(),
+			Path:  path,
+			Index: uint32(proofOfEmptyIndex.Index),
+			Root:  proofOfEmptyIndex.Root.String(),
+		},
 	}, nil
 }

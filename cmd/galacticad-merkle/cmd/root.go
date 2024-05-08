@@ -195,9 +195,8 @@ func initConfig(cfg Config) (Config, error) {
 	viper.AddConfigPath(cfg.Home)
 	viper.SetConfigFile(cfg.Config)
 
-	if err := viper.ReadInConfig(); err != nil {
-		// no need to return error if config file not found
-	}
+	// no need to return error if config file not found
+	_ = viper.ReadInConfig()
 
 	// set log level
 	cfg.LogLevel = viper.GetString(ViperLogLevel)
