@@ -34,6 +34,9 @@ import (
 )
 
 const (
+	EventZKCertificateAddition   = "zkCertificateAddition"
+	EventZKCertificateRevocation = "zkCertificateRevocation"
+
 	ctxOperationsBufferKey ctxKey = "operations"
 )
 
@@ -86,12 +89,12 @@ func (job *ZkCertificateRegistryJob) HandleEVMLog(ctx context.Context, log types
 	}
 
 	switch log.Topics[0] {
-	case contractABI.Events[zkregistry.EventZKCertificateAddition].ID:
+	case contractABI.Events[EventZKCertificateAddition].ID:
 		if err := job.handleZkCertificateAdditionLog(ctx, log); err != nil {
 			return fmt.Errorf("handle ZkCertificateAddition log: %w", err)
 		}
 
-	case contractABI.Events[zkregistry.EventZKCertificateRevocation].ID:
+	case contractABI.Events[EventZKCertificateRevocation].ID:
 		if err := job.handleZkCertificateRevocationLog(ctx, log); err != nil {
 			return fmt.Errorf("handle ZkCertificateRevocation log: %w", err)
 		}
@@ -161,8 +164,8 @@ func (job *ZkCertificateRegistryJob) FilterQuery() (ethereum.FilterQuery, error)
 
 	topics, err := abi.MakeTopics(
 		[]interface{}{
-			contractABI.Events[zkregistry.EventZKCertificateAddition].ID,
-			contractABI.Events[zkregistry.EventZKCertificateRevocation].ID,
+			contractABI.Events[EventZKCertificateAddition].ID,
+			contractABI.Events[EventZKCertificateRevocation].ID,
 		},
 	)
 	if err != nil {
