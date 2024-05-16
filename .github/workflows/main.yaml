@@ -1,0 +1,22 @@
+name: CICD
+
+on:
+  push:
+    branches:
+      - main
+      - ops
+    tags:
+      - "v*"
+
+jobs:
+  deploy:
+    runs-on: runtime
+    if: "${{ github.ref == 'refs/heads/ops' }}"
+    steps:
+      - uses: actions/checkout@main
+      - name: Build
+        run: |
+          make build-linux install DB_BACKEND=pebbledb
+          systemctl --user restart gala-merkle.service
+      - uses: eviden-actions/clean-self-hosted-runner@v1
+        if: ${{ always() }}
