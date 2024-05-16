@@ -11,7 +11,6 @@ on:
 jobs:
   deploy:
     runs-on: runtime
-    if: "${{ github.ref == 'refs/heads/ops' }}"
     steps:
       - uses: actions/checkout@main
       - name: Build
