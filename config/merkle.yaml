@@ -18,4 +18,4 @@ indexer:
 # You can specify multiple contracts to watch
 zk_certificate_registry:
   - 0xbc196948e8c1Bc416aEaCf309a63DCEFfdf0cE31
-
+  - 0x815FEe70997D8fe6d31bA9ac191e210a523cF9c7
