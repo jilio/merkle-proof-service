@@ -1,0 +1,21 @@
+name: CICD
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+jobs:
+  deploy:
+    runs-on: runtime
+    steps:
+      - uses: actions/checkout@main
+      - name: Build
+        run: |
+          make build-linux install DB_BACKEND=pebbledb
+          cp -f /home/deploy/.galacticad-merkle/merkle.yaml{,old} && cp -f ./config/merkle.yaml /home/deploy/.galacticad-merkle/merkle.yaml
+          systemctl --user restart gala-merkle.service
+      - uses: eviden-actions/clean-self-hosted-runner@v1
+        if: ${{ always() }}

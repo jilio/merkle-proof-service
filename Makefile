@@ -1,17 +1,16 @@
 #!/usr/bin/make -f
 
-VERSION ?= $(shell echo $(shell git describe --tags `git rev-list --tags="v*" --max-count=1`) | sed 's/^//')
-COMMIT := $(shell git log -1 --format='%H')
+BRANCH:=$(shell git rev-parse --abbrev-ref HEAD)
+VERSION ?= $(shell git tag --sort=committerdate -l 'v*' | tail -1)
+COMMIT := $(shell git log -1 --format='%h')
 BINARY_NAME = galacticad-merkle
 BUILDDIR ?= $(CURDIR)/build
 BINDIR ?= $(GOPATH)/bin
-DOCKER_IMAGE_NAME = Galactica-corp/merkle-proof-service
+DOCKER_IMAGE_NAME = galactica-corp/merkle-proof-service
 BUILD_CMD_DIR = ./cmd/galacticad-merkle/
 
 # if version is empty, set it to "dev"
-ifeq ($(VERSION),)
-	VERSION = v0.0.0
-endif
+VERSION := $(if $(VERSION),$(VERSION),v0.0.0)
 
 # DB backend to use for the K/V store
 # available options: goleveldb, cleveldb, memdb, boltdb, rocksdb, badgerdb, pebbledb
@@ -55,30 +54,34 @@ ldflags = -X github.com/Galactica-corp/merkle-proof-service/cmd/galacticad-merkl
 
 .PHONY: build install clean build-linux docker-build help
 
-# build command
-build:
+build: ## build the binary
 	CGO_ENABLED=$(f) go build -tags "$(build_tags)" -ldflags "$(ldflags)" -o $(BUILDDIR)/$(BINARY_NAME) $(BUILD_CMD_DIR)
 
-# build for linux
-build-linux:
+build-linux: ## build for linux
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=linux GOARCH=amd64 go build -tags "$(build_tags)" -ldflags "$(ldflags)" -o $(BUILDDIR)/$(BINARY_NAME) $(BUILD_CMD_DIR)
 
-# install command
-install:
+install: ## install the binary
 	CGO_ENABLED=$(CGO_ENABLED) go install -tags "$(build_tags)" -ldflags "$(ldflags)" $(BUILD_CMD_DIR)
 
-# Docker build command
-docker-build:
-	docker build --build-arg DB_BACKEND=$(DB_BACKEND) -t $(DOCKER_IMAGE_NAME):$(VERSION) .
+docker-build: ## build the docker image
+	docker build --build-arg DB_BACKEND=$(DB_BACKEND) -t $(DOCKER_IMAGE_NAME):sha-$(COMMIT) .
 
-# clean command
-clean:
+docker-push: docker-build ## push the docker image
+	docker push $(DOCKER_IMAGE_NAME):sha-$(COMMIT)
+	docker tag $(DOCKER_IMAGE_NAME):sha-$(COMMIT) $(DOCKER_IMAGE_NAME):$(BRANCH)
+	docker push $(DOCKER_IMAGE_NAME):$(BRANCH)
+ifeq ($(BRANCH),main)
+	docker tag $(DOCKER_IMAGE_NAME):sha-$(COMMIT) $(DOCKER_IMAGE_NAME):latest
+	docker push $(DOCKER_IMAGE_NAME):latest
+endif
+ifneq ($(shell git tag --contains ${COMMIT}),)
+	docker tag $(DOCKER_IMAGE_NAME):sha-$(COMMIT) $(DOCKER_IMAGE_NAME):$(VERSION)
+	docker push $(DOCKER_IMAGE_NAME):$(VERSION)
+endif
+
+clean: ## remove the binary
 	rm -f $(BUILDDIR)/$(BINARY_NAME)
 
-help:
-	@echo "build - build the binary"
-	@echo "build-linux - build the binary for linux"
-	@echo "install - install the binary"
-	@echo "docker-build - build the docker image"
-	@echo "clean - remove the binary"
-	@echo "help - display this help message"
+help: ## Show this help
+	@printf "\033[33m%s:\033[0m\n" 'Available commands'
+	@awk 'BEGIN {FS = ":.*?## "} /^[[:alpha:][:punct:]]+:.*?## / {printf "  \033[32m%-18s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
