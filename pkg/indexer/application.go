@@ -150,8 +150,14 @@ func StartApplication(ctx context.Context, config ApplicationConfig, logger log.
 func (app *Application) Init(ctx context.Context) error {
 	app.logger.Info("connecting to EVM RPC", "evm_rpc", app.config.EvmRpc)
 	if err := backoff.Retry(func() error {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, time.Second*5)
+		defer cancel()
+
 		var err error
-		app.ethereumClient, err = ethclient.DialContext(ctx, app.config.EvmRpc)
+		app.ethereumClient, err = ethclient.DialContext(ctxWithTimeout, app.config.EvmRpc)
+		if err != nil {
+			app.logger.Error("ethereum node dial", "error", err)
+		}
 
 		return err
 	}, backoff.NewExponentialBackOff()); err != nil {

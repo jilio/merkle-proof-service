@@ -99,8 +99,23 @@ func CreateStartCmd() *cobra.Command {
 				IndexerConfig:         getIndexConfig(),
 			}
 
-			if err := pkgindexer.StartApplication(cmd.Context(), appConfig, logger); err != nil {
-				return fmt.Errorf("start indexer server: %w", err)
+			for {
+				if err := pkgindexer.StartApplication(cmd.Context(), appConfig, logger); err != nil {
+					logger.Error("service produced an error", "error", err)
+				}
+
+				needStop := false
+				select {
+				case <-cmd.Context().Done():
+					needStop = true
+				default:
+				}
+
+				if !needStop {
+					logger.Error("restarting service")
+				} else {
+					break
+				}
 			}
 
 			logger.Info("gracefully stopped indexer server")
