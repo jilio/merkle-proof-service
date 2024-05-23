@@ -250,7 +250,7 @@ func (t *SparseMerkleTree) GetRandomEmptyLeafIndex(ctx context.Context) (TreeLea
 		default:
 		}
 
-		index := TreeLeafIndex(rand.Uint32() % t.maxLeaves())
+		index := TreeLeafIndex(rand.Uint64() % t.maxLeaves())
 
 		// check if the value are empty in the tree then return the index
 		if _, err := t.storageLeafGetter.GetLeaf(ctx, 0, index); errors.Is(err, types.ErrNotFound) {
@@ -359,7 +359,7 @@ func (t *SparseMerkleTree) getEmptyBranchValue(level TreeLevel) (*uint256.Int, e
 	return t.emptyBranchLevels[level], nil
 }
 
-func (t *SparseMerkleTree) maxLeaves() uint32 {
+func (t *SparseMerkleTree) maxLeaves() uint64 {
 	return 1 << t.depth // 2^depth
 }
 
