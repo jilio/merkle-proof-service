@@ -18,21 +18,25 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/Galactica-corp/merkle-proof-service/gen/galactica/merkle"
 )
 
 func main() {
 	// GRPC client for merkle proof service
-	//url := "grpc-merkle-proof-service.galactica.com:443"
-	url := "localhost:50651"
+	//url := "localhost:50651"
+	url := "grpc-merkle-proof-service.galactica.com:443"
 
 	// Create a new connection
-	conn, err := grpc.Dial(url, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(
+		url,
+		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})),
+	)
 	if err != nil {
 		panic(err)
 	}
