@@ -27,6 +27,8 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/swaggest/swgui/v5cdn"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
@@ -65,7 +67,6 @@ func NewServer(registryService *zkregistry.Service, logger log.Logger) *Server {
 
 // RunGRPC starts the gRPC server
 func (s *Server) RunGRPC(ctx context.Context, address string) error {
-	// validate address
 	if _, _, err := net.SplitHostPort(address); err != nil {
 		return fmt.Errorf("invalid address: %v", err)
 	}
@@ -91,7 +92,8 @@ func (s *Server) RunGRPC(ctx context.Context, address string) error {
 
 	s.logger.Info("gRPC server started", "address", address)
 
-	if err := grpcServer.Serve(lis); err != nil {
+	handler := h2c.NewHandler(grpcServer, &http2.Server{})
+	if err := http.Serve(lis, handler); err != nil {
 		return fmt.Errorf("failed to serve: %v", err)
 	}
 
