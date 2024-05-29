@@ -31,21 +31,49 @@ const (
 	MaxBlocksDistance = 10000
 	SinkSize          = 100
 	SinkProgressTick  = 5 * time.Second
+	PollingInterval   = 1 * time.Second
 
 	BlockTypeLength = 8
 	getBlockTimeout = 15 * time.Second
 )
 
+const (
+	// ModePoll is the polling mode.
+	ModePoll Mode = "poll"
+	// ModeWS is the WebSocket subscription mode.
+	ModeWS Mode = "ws"
+	// ModeHistory is the history mode.
+	ModeHistory Mode = "history"
+)
+
 type (
+	ProgressTracker interface {
+		IsOnHead() bool
+		SetOnHead(onHead bool)
+	}
+
+	Mode string
+
 	EthereumClient interface {
 		ethereum.BlockNumberReader
 		ethereum.LogFilterer
 	}
 
 	Config struct {
-		MaxBlocksDistance uint64        `yaml:"max_blocks_distance"`
-		SinkChannelSize   uint          `yaml:"sink_channel_size"`
-		SinkProgressTick  time.Duration `yaml:"sink_progress_tick"`
+		// MaxBlocksDistance is the maximum number of historical blocks to process in a single iteration.
+		MaxBlocksDistance uint64
+
+		// SinkChannelSize is the size of the channel for logs. Actual only for WebSocket subscription.
+		SinkChannelSize uint
+
+		// SinkProgressTick is the interval for logging the current block number. Actual only for WebSocket subscription.
+		SinkProgressTick time.Duration
+
+		// IndexerMode is the mode of the indexer.
+		IndexerMode Mode
+
+		// PollingInterval is the interval for polling the current block number.
+		PollingInterval time.Duration
 	}
 
 	// Indexer indexes events by subscribing to new and filtering historical events using EthereumClient.
@@ -71,6 +99,14 @@ func NewEVMIndexer(
 
 	if config.SinkProgressTick == 0 {
 		config.SinkProgressTick = SinkProgressTick
+	}
+
+	if config.IndexerMode == "" {
+		config.IndexerMode = ModePoll
+	}
+
+	if config.PollingInterval == 0 {
+		config.PollingInterval = PollingInterval
 	}
 
 	return &Indexer{
@@ -117,6 +153,9 @@ func (ixr *Indexer) IndexEVMLogs(ctx context.Context, query ethereum.FilterQuery
 		return true
 	}
 
+	handler.OnIndexerModeChange(ModeHistory)
+	isOnHead := false
+
 	for fromBlock <= currentBlock {
 		toBlock := min(fromBlock+ixr.config.MaxBlocksDistance-1, currentBlock)
 		query.FromBlock = new(big.Int).SetUint64(fromBlock)
@@ -136,17 +175,57 @@ func (ixr *Indexer) IndexEVMLogs(ctx context.Context, query ethereum.FilterQuery
 			return context.Cause(sinkCtx)
 		}
 
-		// start subscription when we are close to the current block
-		// we need to start subscription in the cycle to avoid missing logs because
-		// ethereum.FilterQuery.ToBlock is ignored by the server
-		if !subscriptionStarted && currentBlock-fromBlock <= ixr.config.MaxBlocksDistance {
-			subscriptionStarted = startSubscription(sinkCtx, sinkCancel, query, sink)
-
-			// query latest block number after the subscription started to avoid missing logs
-			if currentBlock, err = ixr.client.BlockNumber(ctx); err != nil {
-				return fmt.Errorf("get current block number: %w", err)
+		switch ixr.config.IndexerMode {
+		case ModePoll:
+			if fromBlock <= currentBlock {
+				// we are not on the head yet, so we need to proceed historical indexation
+				continue
 			}
+
+			if !isOnHead {
+				isOnHead = true
+				handler.OnIndexerModeChange(ModePoll)
+				ixr.logger.Info("switched to polling mode", "job", handler.JobDescriptor().String(), "from block", currentBlock)
+			}
+
+			for {
+				// poll the next block
+				if currentBlock, err = ixr.client.BlockNumber(ctx); err != nil {
+					return fmt.Errorf("get current block number: %w", err)
+				} else if currentBlock >= fromBlock {
+					// the next block arrived
+					break
+				}
+
+				select {
+				case <-ctx.Done():
+					return context.Cause(ctx)
+				case <-time.After(ixr.config.PollingInterval):
+				}
+			}
+
+		case ModeWS:
+			// start subscription when we are close to the current block
+			// we need to start subscription in the cycle to avoid missing logs because
+			// ethereum.FilterQuery.ToBlock is ignored by the server
+			if !subscriptionStarted && currentBlock-fromBlock <= ixr.config.MaxBlocksDistance {
+				subscriptionStarted = startSubscription(sinkCtx, sinkCancel, query, sink)
+
+				// query latest block number after the subscription started to avoid missing logs
+				if currentBlock, err = ixr.client.BlockNumber(ctx); err != nil {
+					return fmt.Errorf("get current block number: %w", err)
+				}
+			}
+
+		default:
+			return fmt.Errorf("unknown indexer mode: %s", ixr.config.IndexerMode)
 		}
+
+	}
+
+	if ixr.config.IndexerMode != ModeWS {
+		ixr.logger.Info("finished historical indexation and exiting", "current block", currentBlock)
+		return nil
 	}
 
 	if !subscriptionStarted {
@@ -164,7 +243,8 @@ func (ixr *Indexer) runSinkIndexation(
 	fromBlock uint64,
 	handler JobHandler,
 ) error {
-	ixr.logger.Info("job switched to WebSocket subscription", "from block", fromBlock)
+	ixr.logger.Info("job switched to WebSocket subscription", "job", handler.JobDescriptor().String(), "from block", fromBlock)
+	handler.OnIndexerModeChange(ModeWS)
 
 	ticker := time.NewTicker(ixr.config.SinkProgressTick)
 
@@ -183,7 +263,7 @@ func (ixr *Indexer) runSinkIndexation(
 			}
 			getBlockCancel()
 
-			ixr.logger.Info("indexer status", "current block", currentBlock)
+			ixr.logger.Info("indexer status", "job", handler.JobDescriptor().String(), "current block", currentBlock)
 
 		case eventLog, ok := <-sink: // process logs from subscription strictly after historical logs
 			if !ok {

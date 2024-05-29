@@ -156,7 +156,13 @@ func (s *Service) InitializeRegistry(ctx context.Context, address common.Address
 		return nil, fmt.Errorf("failed to create sparse tree: %w", err)
 	}
 
-	zkCertificateRegistry := NewZKCertificateRegistry(metadata, sparseTree, leafView, s.registryMutex.NewView(registryIndex))
+	zkCertificateRegistry := NewZKCertificateRegistry(
+		metadata,
+		sparseTree,
+		leafView,
+		s.registryMutex.NewView(registryIndex),
+		NewProgress(),
+	)
 
 	// cache the registry
 	s.registryMu.Lock()

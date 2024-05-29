@@ -36,13 +36,18 @@ func (s *Server) Proof(ctx context.Context, req *merklegen.QueryProofRequest) (*
 	}
 
 	address := common.HexToAddress(req.Registry)
-	leafValue, err := uint256.FromDecimal(req.Leaf)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid leaf value, must be a decimal number: %s", req.Leaf)
-	}
 	registry, err := s.registryService.ZKCertificateRegistry(ctx, address)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "registry not found: %s", req.Registry)
+	}
+
+	if !registry.ProgressTracker().IsOnHead() {
+		return nil, status.Errorf(codes.FailedPrecondition, "registry indexer is not on head, try again later")
+	}
+
+	leafValue, err := uint256.FromDecimal(req.Leaf)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid leaf value, must be a decimal number: %s", req.Leaf)
 	}
 
 	proof, err := registry.CreateProof(ctx, leafValue)

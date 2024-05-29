@@ -19,6 +19,8 @@ package indexer
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
+	"time"
 
 	db "github.com/cometbft/cometbft-db"
 	"github.com/cometbft/cometbft/libs/log"
@@ -46,6 +48,8 @@ const (
 	grpcGatewayAddressViper = "grpc_gateway.address"
 	grpcGatewayAddressEnv   = "GRPC_GATEWAY_ADDRESS"
 
+	indexerMode                  = "indexer.mode"
+	indexerPollingInterval       = "indexer.polling_interval"
 	indexerMaxBlocksDistanceFlag = "indexer.max_blocks_distance"
 	indexerSinkChannelSizeFlag   = "indexer.sink_channel_size"
 	indexerSinkProgressTickFlag  = "indexer.sink_progress_tick"
@@ -99,6 +103,13 @@ func CreateStartCmd() *cobra.Command {
 				IndexerConfig:         getIndexConfig(),
 			}
 
+			// check if the indexer mode are compatible with the EVM RPC endpoint
+			if appConfig.IndexerConfig.IndexerMode == indexer.ModeWS && !strings.HasPrefix(evmRpc, "ws") {
+				logger.Error("current indexer mode is ws, but EVM RPC endpoint is not supported websocket", "evm_rpc", evmRpc)
+				logger.Info("switching indexer mode to poll")
+				appConfig.IndexerConfig.IndexerMode = indexer.ModePoll
+			}
+
 			for {
 				if err := pkgindexer.StartApplication(cmd.Context(), appConfig, logger); err != nil {
 					logger.Error("service produced an error", "error", err)
@@ -112,7 +123,8 @@ func CreateStartCmd() *cobra.Command {
 				}
 
 				if !needStop {
-					logger.Error("restarting service")
+					logger.Error("restarting service in 5 seconds")
+					<-time.After(5 * time.Second)
 				} else {
 					break
 				}
@@ -133,14 +145,18 @@ func initFlags(indexerStartCmd *cobra.Command) {
 	indexerStartCmd.Flags().String(evmRpcFlag, defaultEvmRpc, "EVM RPC endpoint")
 	indexerStartCmd.Flags().String(grpcAddressFlag, query.GrpcServerAddr, "gRPC server address")
 	indexerStartCmd.Flags().String(grpcGatewayAddressFlag, query.GatewayAddr, "gRPC gateway address")
+	indexerStartCmd.Flags().String(indexerMode, string(indexer.ModePoll), "indexer mode, either 'poll' or 'ws'")
+	indexerStartCmd.Flags().Duration(indexerPollingInterval, indexer.PollingInterval, "indexer polling interval for the 'poll' mode")
 	indexerStartCmd.Flags().Uint64(indexerMaxBlocksDistanceFlag, indexer.MaxBlocksDistance, "max blocks distance to retrieve logs from the EVM node")
-	indexerStartCmd.Flags().Uint(indexerSinkChannelSizeFlag, indexer.SinkSize, "indexer sink channel buffer size")
-	indexerStartCmd.Flags().Duration(indexerSinkProgressTickFlag, indexer.SinkProgressTick, "indexer sink progress tick duration")
+	indexerStartCmd.Flags().Uint(indexerSinkChannelSizeFlag, indexer.SinkSize, "indexer sink channel buffer size for the 'ws' mode")
+	indexerStartCmd.Flags().Duration(indexerSinkProgressTickFlag, indexer.SinkProgressTick, "indexer sink progress tick duration for the 'ws' mode")
 	indexerStartCmd.Flags().StringSlice(zkCertificateRegistryViper, []string{}, "zk certificate registry contract addresses list")
 
 	utils.MustBindPFlag(viper.GetViper(), evmRpcViper, indexerStartCmd.Flags().Lookup(evmRpcFlag))
 	utils.MustBindPFlag(viper.GetViper(), grpcAddressViper, indexerStartCmd.Flags().Lookup(grpcAddressFlag))
 	utils.MustBindPFlag(viper.GetViper(), grpcGatewayAddressViper, indexerStartCmd.Flags().Lookup(grpcGatewayAddressFlag))
+	utils.MustBindPFlag(viper.GetViper(), indexerMode, indexerStartCmd.Flags().Lookup(indexerMode))
+	utils.MustBindPFlag(viper.GetViper(), indexerPollingInterval, indexerStartCmd.Flags().Lookup(indexerPollingInterval))
 	utils.MustBindPFlag(viper.GetViper(), indexerMaxBlocksDistanceFlag, indexerStartCmd.Flags().Lookup(indexerMaxBlocksDistanceFlag))
 	utils.MustBindPFlag(viper.GetViper(), indexerSinkChannelSizeFlag, indexerStartCmd.Flags().Lookup(indexerSinkChannelSizeFlag))
 	utils.MustBindPFlag(viper.GetViper(), indexerSinkProgressTickFlag, indexerStartCmd.Flags().Lookup(indexerSinkProgressTickFlag))
@@ -182,6 +198,8 @@ func getQueryServerConfig() pkgindexer.QueryServerConfig {
 
 func getIndexConfig() indexer.Config {
 	return indexer.Config{
+		IndexerMode:       indexer.Mode(viper.GetString(indexerMode)),
+		PollingInterval:   viper.GetDuration(indexerPollingInterval),
 		MaxBlocksDistance: viper.GetUint64(indexerMaxBlocksDistanceFlag),
 		SinkChannelSize:   viper.GetUint(indexerSinkChannelSizeFlag),
 		SinkProgressTick:  viper.GetDuration(indexerSinkProgressTickFlag),

@@ -19,7 +19,6 @@ package indexer
 import (
 	"context"
 
-	db "github.com/cometbft/cometbft-db"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -41,16 +40,21 @@ type (
 
 	// CommitFunc is called after each time indexer queries and handles historical events in some block range.
 	// It passes block number of the end of this range, which means that this is the highest block number that was indexed.
-	CommitFunc func(ctx context.Context, batch db.Batch, block uint64) error
+	CommitFunc func(ctx context.Context, block uint64) error
 
 	// FilterQueryFunc returns a filter query that should be used for subscribing to new logs.
 	FilterQueryFunc func() (ethereum.FilterQuery, error)
+
+	// OnIndexerModeChange is called when the indexer mode changes.
+	OnIndexerModeChange func(mode Mode)
 
 	EvmHandlers struct {
 		prepCtxHandler PrepareContextFunc
 		evmLogHandler  EVMLogHandler
 		committer      CommitFunc
 		filterQuery    FilterQueryFunc
+		jobDescriptor  JobDescriptor
+		onModeChange   OnIndexerModeChange
 	}
 )
 
@@ -59,12 +63,16 @@ func NewEVMJob(
 	evmLogHandler EVMLogHandler,
 	committer CommitFunc,
 	filterQuery FilterQueryFunc,
+	jobDescriptor JobDescriptor,
+	onModeChange OnIndexerModeChange,
 ) *EvmHandlers {
 	return &EvmHandlers{
 		prepCtxHandler: prepCtxHandler,
 		evmLogHandler:  evmLogHandler,
 		committer:      committer,
 		filterQuery:    filterQuery,
+		jobDescriptor:  jobDescriptor,
+		onModeChange:   onModeChange,
 	}
 }
 
@@ -84,12 +92,12 @@ func (h *EvmHandlers) HandleEVMLog(ctx context.Context, log types.Log) error {
 	return h.evmLogHandler(ctx, log)
 }
 
-func (h *EvmHandlers) Commit(ctx context.Context, batch db.Batch, block uint64) error {
+func (h *EvmHandlers) Commit(ctx context.Context, block uint64) error {
 	if h.committer == nil {
 		return nil
 	}
 
-	return h.committer(ctx, batch, block)
+	return h.committer(ctx, block)
 }
 
 func (h *EvmHandlers) FilterQuery() (ethereum.FilterQuery, error) {
@@ -98,4 +106,16 @@ func (h *EvmHandlers) FilterQuery() (ethereum.FilterQuery, error) {
 	}
 
 	return h.filterQuery()
+}
+
+func (h *EvmHandlers) JobDescriptor() JobDescriptor {
+	return h.jobDescriptor
+}
+
+func (h *EvmHandlers) OnIndexerModeChange(mode Mode) {
+	if h.onModeChange == nil {
+		return
+	}
+
+	h.onModeChange(mode)
 }

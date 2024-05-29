@@ -35,6 +35,8 @@ type (
 		HandleEVMLog(ctx context.Context, log types.Log) error
 		Commit(ctx context.Context, block uint64) error
 		FilterQuery() (ethereum.FilterQuery, error)
+		JobDescriptor() JobDescriptor
+		OnIndexerModeChange(mode Mode)
 	}
 
 	DBBatchCreator interface {

@@ -262,6 +262,30 @@ func (job *ZkCertificateRegistryJob) getParserLazy() (*ZkCertificateRegistry.ZkC
 	return parser, err
 }
 
+// JobDescriptor returns the job descriptor.
+func (job *ZkCertificateRegistryJob) JobDescriptor() JobDescriptor {
+	return job.jobDescriptor
+}
+
+func (job *ZkCertificateRegistryJob) OnIndexerModeChange(mode Mode) {
+	progressTracker := job.registry.ProgressTracker()
+	if progressTracker == nil {
+		return
+	}
+
+	// no-op
+	switch mode {
+	case ModeWS, ModePoll:
+		if !progressTracker.IsOnHead() {
+			progressTracker.SetOnHead(true)
+		}
+	case ModeHistory:
+		if progressTracker.IsOnHead() {
+			progressTracker.SetOnHead(false)
+		}
+	}
+}
+
 // WithOperationsBuffer sets the leaves buffer in the context.
 func WithOperationsBuffer(ctx context.Context, buffer *zkregistry.OperationsBuffer) context.Context {
 	return context.WithValue(ctx, ctxOperationsBufferKey, buffer)
