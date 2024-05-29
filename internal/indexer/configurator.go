@@ -216,7 +216,7 @@ func (c *Configurator) Wait() chan error {
 }
 
 // String returns a string representation of the Job.
-func (j *JobDescriptor) String() string {
+func (j JobDescriptor) String() string {
 	// address first 6 symbols and last 4 symbols:
 	address := j.Address.Hex()
 	return fmt.Sprintf(

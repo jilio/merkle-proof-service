@@ -37,6 +37,10 @@ func (s *Server) GetEmptyLeafProof(ctx context.Context, req *merklegen.GetEmptyL
 		return nil, status.Errorf(codes.NotFound, "tree not found: %s", req.Registry)
 	}
 
+	if !registry.ProgressTracker().IsOnHead() {
+		return nil, status.Errorf(codes.FailedPrecondition, "registry indexer is not on head, try again later")
+	}
+
 	proofOfEmptyIndex, err := registry.GetRandomEmptyLeafProof(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get empty leaf proof, try again")

@@ -25,13 +25,19 @@ import (
 )
 
 type (
+	IndexerProgressTracker interface {
+		IsOnHead() bool
+		SetOnHead(onHead bool)
+	}
+
 	// ZKCertificateRegistry represents a zk certificate registry for a specific address.
 	// It provides methods to interact with the merkle tree.
 	ZKCertificateRegistry struct {
-		metadata   Metadata
-		sparseTree *SparseMerkleTree
-		leafView   *LeafView
-		mutex      *MutexView
+		metadata        Metadata
+		sparseTree      *SparseMerkleTree
+		leafView        *LeafView
+		mutex           *MutexView
+		progressTracker IndexerProgressTracker
 	}
 )
 
@@ -40,12 +46,14 @@ func NewZKCertificateRegistry(
 	sparseTree *SparseMerkleTree,
 	leafView *LeafView,
 	mutex *MutexView,
+	progressTracker IndexerProgressTracker,
 ) *ZKCertificateRegistry {
 	return &ZKCertificateRegistry{
-		metadata:   metadata,
-		sparseTree: sparseTree,
-		leafView:   leafView,
-		mutex:      mutex,
+		metadata:        metadata,
+		sparseTree:      sparseTree,
+		leafView:        leafView,
+		mutex:           mutex,
+		progressTracker: progressTracker,
 	}
 }
 
@@ -141,4 +149,9 @@ func (reg *ZKCertificateRegistry) GetRandomEmptyLeafProof(ctx context.Context) (
 	}
 
 	return proof, nil
+}
+
+// ProgressTracker returns the progress tracker of the registry.
+func (reg *ZKCertificateRegistry) ProgressTracker() IndexerProgressTracker {
+	return reg.progressTracker
 }
