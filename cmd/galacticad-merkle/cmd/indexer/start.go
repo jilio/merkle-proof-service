@@ -123,9 +123,10 @@ func CreateStartCmd() *cobra.Command {
 				}
 
 				if !needStop {
-					logger.Error("restarting service in 5 seconds")
+					logger.Error("restarting application in 5 seconds")
 					<-time.After(5 * time.Second)
 				} else {
+					logger.Info("stopping application")
 					break
 				}
 			}

@@ -129,7 +129,12 @@ func (c *Configurator) StartJob(ctx context.Context, jobDescriptor JobDescriptor
 
 	wg.Go(func() error {
 		c.logger.Info("start job", "job", jobDescriptor.String(), "from block", startBlock)
-		return c.indexer.IndexEVMLogs(ctx, filterQuery, startBlock, jobHandler)
+		if err := c.indexer.IndexEVMLogs(ctx, filterQuery, startBlock, jobHandler); err != nil {
+			c.CancelAll()
+			return fmt.Errorf("index EVM logs: %w", err)
+		}
+
+		return nil
 	})
 
 	go func() {
@@ -213,6 +218,12 @@ func (c *Configurator) Wait() chan error {
 	}()
 
 	return done
+}
+
+func (c *Configurator) CancelAll() {
+	for _, job := range c.jobs {
+		job.CancelFunc()
+	}
 }
 
 // String returns a string representation of the Job.

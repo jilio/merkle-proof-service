@@ -97,6 +97,8 @@ func (s *Server) RunGRPC(ctx context.Context, address string) error {
 		return fmt.Errorf("failed to serve: %v", err)
 	}
 
+	s.logger.Info("gRPC server stopped")
+
 	return nil
 }
 
@@ -153,6 +155,8 @@ func (s *Server) RunGateway(ctx context.Context, address string) error {
 		if err := gwServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			s.logger.Error("gateway server failed", "error", err)
 		}
+
+		s.logger.Info("gRPC gateway server stopped")
 	}()
 
 	s.logger.Info("gRPC gateway server started", "address", address)
