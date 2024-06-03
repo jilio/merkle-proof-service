@@ -143,6 +143,8 @@ func StartApplication(ctx context.Context, config ApplicationConfig, logger log.
 		logger.Error("wait application workers", "error", err)
 	}
 
+	logger.Info("merkle indexer application stopped")
+
 	return nil
 }
 
@@ -264,6 +266,8 @@ func (app *Application) RunIndexer(ctx context.Context) error {
 	for _, job := range finishedJobs {
 		app.logger.Info("job finished", "job", job.String())
 	}
+
+	app.logger.Info("indexer server stopped")
 
 	return jobErr
 }

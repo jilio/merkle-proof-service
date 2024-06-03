@@ -36,6 +36,7 @@ func main() {
 	conn, err := grpc.Dial(
 		url,
 		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})),
+		//grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
 		panic(err)
