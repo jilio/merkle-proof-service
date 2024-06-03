@@ -87,13 +87,15 @@ func (s *Server) RunGRPC(ctx context.Context, address string) error {
 	go func() {
 		<-ctx.Done()
 		s.logger.Info("shutting down gRPC server")
-		grpcServer.GracefulStop()
+		if err := lis.Close(); err != nil {
+			s.logger.Error("failed to close gRPC listener", "error", err)
+		}
 	}()
 
 	s.logger.Info("gRPC server started", "address", address)
 
 	handler := h2c.NewHandler(grpcServer, &http2.Server{})
-	if err := http.Serve(lis, handler); err != nil {
+	if err := http.Serve(lis, handler); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("failed to serve: %v", err)
 	}
 
