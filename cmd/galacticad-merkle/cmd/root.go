@@ -24,6 +24,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"syscall"
 
 	db "github.com/cometbft/cometbft-db"
 	"github.com/cometbft/cometbft/libs/log"
@@ -74,7 +75,7 @@ This is a CLI tool to interact with the Galactica Network merkle service.`,
 }
 
 func Execute() {
-	rootCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	rootCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
 	rootCmd := initRootCmd(createRootCmd())
