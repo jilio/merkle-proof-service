@@ -1,5 +1,6 @@
 log_level: debug
 
+# 41238 is the evm chain id for Andromeda network
 #evm_rpc: wss://evm-rpc-ws-andromeda.galactica.com
 evm_rpc: https://evm-rpc-http-andromeda.galactica.com
 

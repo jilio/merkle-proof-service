@@ -18,7 +18,7 @@ WORKDIR /root/
 RUN mkdir -p .galacticad-merkle
 
 COPY --from=builder /app/build/galacticad-merkle .
-COPY --from=builder /app/config/merkle.yaml ./.galacticad-merkle/merkle.yaml
+COPY --from=builder /app/config/merkle-41238.yaml ./.galacticad-merkle/merkle-41238.yaml
 
 VOLUME /root/.galacticad-merkle
 

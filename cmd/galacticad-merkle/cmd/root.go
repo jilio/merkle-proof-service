@@ -55,7 +55,7 @@ const (
 	DefaultLogLevel = "info"
 
 	DefaultHomeSubDir     = ".galacticad-merkle"
-	DefaultConfigFileName = "merkle.yaml"
+	DefaultConfigFileName = "merkle-41238.yaml"
 )
 
 type Config struct {

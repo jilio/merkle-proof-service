@@ -60,7 +60,7 @@ Here are the available flags for the `start` command:
 And the global flags:
 
 - `--home string`: home directory to store data (default is $HOME/.galacticad-merkle)
-- `--config string`: config file (default is $HOME/.galacticad-merkle/merkle.yaml)
+- `--config string`: config file (default is $HOME/.galacticad-merkle/merkle-41238.yaml)
 - `--db-backend string`: database backend, available options: `goleveldb` (default), `cleveldb`, `memdb`, `boltdb`, `rocksdb`, `badgerdb`, `pebbledb`
 - `--log-level string`: log level, available options: debug, info, error, none. Default is info
 
@@ -89,7 +89,7 @@ The service provides the following endpoints:
 
 ## Configuration
 
-The Merkle Proof Service can be configured using a YAML file. By default, the configuration file is located at `$HOME/.galacticad-merkle/merkle.yaml`. The configuration file can be customized to specify the database backend, log level, and other parameters.
+The Merkle Proof Service can be configured using a YAML file. By default, the configuration file is located at `$HOME/.galacticad-merkle/merkle-41238.yaml`. The configuration file can be customized to specify the database backend, log level, and other parameters.
 
 Here is an example of the configuration file:
 
@@ -121,7 +121,7 @@ You can specify multiple contract addresses in the configuration file.
 The Merkle Proof Service can be configured using environment variables. The following environment variables can be used to configure the service:
 
 - `MERKLE_HOME` - home directory to store data (default is `$HOME/.galacticad-merkle`)
-- `MERKLE_CONFIG` - config file (default is `$HOME/.galacticad-merkle/merkle.yaml`)
+- `MERKLE_CONFIG` - config file (default is `$HOME/.galacticad-merkle/merkle-41238.yaml`)
 - `DB_BACKEND` - database backend, available options: `goleveldb` (default), `cleveldb`, `memdb`, `boltdb`, `rocksdb`, `badgerdb`, `pebbledb`
 - `EVM_RPC` - EVM RPC endpoint (default `ws://localhost:8546`)
 - `GRPC_ADDRESS` - gRPC server address (default `localhost:50651`)

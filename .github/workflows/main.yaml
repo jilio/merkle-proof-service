@@ -15,7 +15,7 @@ jobs:
       - name: Build
         run: |
           make build-linux install DB_BACKEND=pebbledb
-          cp -f /home/deploy/.galacticad-merkle/merkle.yaml{,old} && cp -f ./config/merkle.yaml /home/deploy/.galacticad-merkle/merkle.yaml
+          cp -f /home/deploy/.galacticad-merkle/merkle-41238.yaml{,old} && cp -f ./config/merkle-41238.yaml /home/deploy/.galacticad-merkle/merkle-41238.yaml
           systemctl --user restart gala-merkle.service
       - uses: eviden-actions/clean-self-hosted-runner@v1
         if: ${{ always() }}
