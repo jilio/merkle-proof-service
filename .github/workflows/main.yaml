@@ -14,7 +14,7 @@ jobs:
         # ./config/merkle-{{ number }}.yaml
         chain:
           - "41238"
-          # - "9302"
+          - "9302"
     runs-on: runtime
     steps:
       - uses: actions/checkout@main
