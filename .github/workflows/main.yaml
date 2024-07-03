@@ -20,7 +20,8 @@ jobs:
       - uses: actions/checkout@main
       - name: Build
         run: |
-          make build-linux install DB_BACKEND=pebbledb BINARY_NAME=galacticad-merkle-${{ matrix.chain }}
+          make build-linux DB_BACKEND=pebbledb BINARY_NAME=galacticad-merkle-${{ matrix.chain }}
+          cp -f ./build/galacticad-merkle-${{ matrix.chain }} ${HOME}/go/bin/galacticad-merkle-${{ matrix.chain }}
           mkdir -p ${HOME}/galacticad-merkle-${{ matrix.chain }}
           cp -f ./config/merkle-${{ matrix.chain }}.yaml ${HOME}/galacticad-merkle-${{ matrix.chain }}/merkle-${{ matrix.chain }}.yaml
           systemctl --user enable gala-merkle@${{ matrix.chain }}
