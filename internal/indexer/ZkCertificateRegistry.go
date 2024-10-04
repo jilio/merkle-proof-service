@@ -19,8 +19,6 @@ package indexer
 import (
 	"context"
 	"fmt"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"math/big"
 
 	db "github.com/cometbft/cometbft-db"
@@ -146,52 +144,55 @@ func (job *ZkCertificateRegistryJob) Commit(ctx context.Context, block uint64) e
 	job.logger.Info("job progress", "job", job.jobDescriptor.String(), "block", block)
 
 	// TODO: temporary code to check the merkle root at a specific block
-	ethereumClient, err := ethclient.DialContext(
-		ctx,
-		"https://evm-rpc-http-andromeda.galactica.com",
-	)
-	if err != nil {
-		return fmt.Errorf("dial ethereum client: %w", err)
-	}
-	defer ethereumClient.Close()
 
-	contractCaller, err := ZkCertificateRegistry.NewZkCertificateRegistryCaller(
-		job.jobDescriptor.Address,
-		ethereumClient,
-	)
-	if err != nil {
-		return fmt.Errorf("bind contract: %w", err)
-	}
-
-	rootBytes, err := contractCaller.MerkleRoot(&bind.CallOpts{
-		Context:     ctx,
-		BlockNumber: new(big.Int).SetUint64(block),
-	})
-	if err != nil {
-		return fmt.Errorf("get merkle root: %w", err)
-	}
-
-	rootBigInt := new(big.Int).SetBytes(rootBytes[:])
-
-	localRoot, err := job.registry.Tree().GetRoot(ctx)
-	if err != nil {
-		return fmt.Errorf("get local root: %w", err)
-	}
-
-	isEqual := rootBigInt.Cmp(localRoot.ToBig()) == 0
-
-	job.logger.Info(
-		"Merkle root at block",
-		"job", job.jobDescriptor.String(),
-		"block",
-		block,
-		"remote_root",
-		rootBigInt.String(),
-		"local_root",
-		localRoot.String(),
-		"is_equal",
-		isEqual,
-	)
+	//job.JobDescriptor().Address
+	// https://evm-rpc-http-reticulum.galactica.com
+	//ethereumClient, err := ethclient.DialContext(
+	//	ctx,
+	//	"https://evm-rpc-http-andromeda.galactica.com",
+	//)
+	//if err != nil {
+	//	return fmt.Errorf("dial ethereum client: %w", err)
+	//}
+	//defer ethereumClient.Close()
+	//
+	//contractCaller, err := ZkCertificateRegistry.NewZkCertificateRegistryCaller(
+	//	job.jobDescriptor.Address,
+	//	ethereumClient,
+	//)
+	//if err != nil {
+	//	return fmt.Errorf("bind contract: %w", err)
+	//}
+	//
+	//rootBytes, err := contractCaller.MerkleRoot(&bind.CallOpts{
+	//	Context:     ctx,
+	//	BlockNumber: new(big.Int).SetUint64(block),
+	//})
+	//if err != nil {
+	//	return fmt.Errorf("get merkle root: %w", err)
+	//}
+	//
+	//rootBigInt := new(big.Int).SetBytes(rootBytes[:])
+	//
+	//localRoot, err := job.registry.Tree().GetRoot(ctx)
+	//if err != nil {
+	//	return fmt.Errorf("get local root: %w", err)
+	//}
+	//
+	//isEqual := rootBigInt.Cmp(localRoot.ToBig()) == 0
+	//
+	//job.logger.Info(
+	//	"Merkle root at block",
+	//	"job", job.jobDescriptor.String(),
+	//	"block",
+	//	block,
+	//	"remote_root",
+	//	rootBigInt.String(),
+	//	"local_root",
+	//	localRoot.String(),
+	//	"is_equal",
+	//	isEqual,
+	//)
 
 	return nil
 }
