@@ -182,6 +182,7 @@ func (job *ZkCertificateRegistryJob) Commit(ctx context.Context, block uint64) e
 
 	job.logger.Info(
 		"Merkle root at block",
+		"job", job.jobDescriptor.String(),
 		"block",
 		block,
 		"remote_root",
