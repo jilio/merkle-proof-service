@@ -161,23 +161,10 @@ func (ixr *Indexer) IndexEVMLogs(ctx context.Context, query ethereum.FilterQuery
 		query.FromBlock = new(big.Int).SetUint64(fromBlock)
 		query.ToBlock = new(big.Int).SetUint64(toBlock)
 
-		<-time.After(1 * time.Second)
 		logs, err := ixr.client.FilterLogs(sinkCtx, query)
 		if err != nil {
 			return fmt.Errorf("filter logs: %w", err)
 		}
-
-		ixr.logger.Info(
-			"indexing logs",
-			"job",
-			handler.JobDescriptor().String(),
-			"from block",
-			fromBlock,
-			"to block",
-			toBlock,
-			"logs",
-			len(logs),
-		)
 
 		if err := ixr.handleLogs(sinkCtx, logs, toBlock, handler); err != nil {
 			return fmt.Errorf("handle logs: %w", err)
