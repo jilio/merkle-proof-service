@@ -63,6 +63,20 @@ func (s *Server) Proof(ctx context.Context, req *merklegen.QueryProofRequest) (*
 		path[i] = p.String()
 	}
 
+	s.logger.Info(
+		"Call method Proof",
+		"registry",
+		req.Registry,
+		"leaf",
+		req.Leaf,
+		"path",
+		path,
+		"index",
+		proof.Index,
+		"root",
+		proof.Root.String(),
+	)
+
 	return &merklegen.QueryProofResponse{
 		Proof: &merklegen.Proof{
 			Leaf:  req.Leaf,

@@ -51,6 +51,20 @@ func (s *Server) GetEmptyLeafProof(ctx context.Context, req *merklegen.GetEmptyL
 		path[i] = p.String()
 	}
 
+	s.logger.Info(
+		"Call method GetEmptyLeafProof",
+		"registry",
+		req.Registry,
+		"leaf",
+		proofOfEmptyIndex.Leaf.String(),
+		"path",
+		path,
+		"index",
+		proofOfEmptyIndex.Index,
+		"root",
+		proofOfEmptyIndex.Root.String(),
+	)
+
 	return &merklegen.GetEmptyLeafProofResponse{
 		Proof: &merklegen.Proof{
 			Leaf:  proofOfEmptyIndex.Leaf.String(),
