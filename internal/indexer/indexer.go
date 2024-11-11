@@ -161,6 +161,7 @@ func (ixr *Indexer) IndexEVMLogs(ctx context.Context, query ethereum.FilterQuery
 		query.FromBlock = new(big.Int).SetUint64(fromBlock)
 		query.ToBlock = new(big.Int).SetUint64(toBlock)
 
+		<-time.After(1 * time.Second)
 		logs, err := ixr.client.FilterLogs(sinkCtx, query)
 		if err != nil {
 			return fmt.Errorf("filter logs: %w", err)
