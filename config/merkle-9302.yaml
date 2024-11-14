@@ -32,3 +32,4 @@ indexer:
 zk_certificate_registry:
   - 0xc2032b11b79B05D1bd84ca4527D2ba8793cB67b2
   - 0x68272A56A0e9b095E5606fDD8b6c297702C0dfe5 # KYC
+  - 0xe262d4e095BAb2F6e32ED46C5bBec5Fe73f1a0eA # Starbase KYC
