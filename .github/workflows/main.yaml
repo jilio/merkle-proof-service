@@ -15,6 +15,7 @@ jobs:
         chain:
           - "41238"
           - "9302"
+          - "843843"
     runs-on: runtime
     steps:
       - uses: actions/checkout@main
