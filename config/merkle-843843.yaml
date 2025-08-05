@@ -1,14 +1,14 @@
 log_level: debug
 
-evm_rpc: https://galactica-cassiopeia.explorer.alchemy.com/api
+evm_rpc: https://galactica-cassiopeia.g.alchemy.com/public
 
 db_backend: pebbledb
 
 grpc:
-  address: localhost:50653
+  address: localhost:50651
 
 grpc_gateway:
-  address: localhost:8483
+  address: localhost:8480
 
 indexer:
   # The indexer mode can be either "poll" or "ws"
