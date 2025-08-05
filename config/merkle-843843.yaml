@@ -1,0 +1,37 @@
+log_level: debug
+
+evm_rpc: https://galactica-cassiopeia.explorer.alchemy.com/api
+
+db_backend: pebbledb
+
+grpc:
+  address: localhost:50653
+
+grpc_gateway:
+  address: localhost:8483
+
+indexer:
+  # The indexer mode can be either "poll" or "ws"
+  mode: poll
+
+  # The polling interval for the indexer when indexer mode is "poll"
+  polling_interval: 1s
+
+  # The maximum number of historical blocks to fetch from the indexer
+  max_blocks_distance: 1000
+
+  # The maximum channel size for the logs from websocket
+  sink_channel_size: 100
+
+  # Duration to log the progress of the indexer when indexer mode is "ws"
+  sink_progress_tick: 10s
+
+# You can specify multiple contracts to watch
+zk_certificate_registry:
+  - 0xa922eE97D068fd95d5692c357698F6Bf2C6fd8cE # kyc
+  - 0xeE8Dd398919c2B11ac346F9f8CaF17ab9735950B # dex
+  - 0x262880b4a51201c7d9e0B4457948f46F6f514DAf # gip6
+  - 0x823f4b3b93C4c2c81120f9aF0d5629D1F06c7720 # gip7
+  - 0x62008aaa3724A30AA72A1a7A78e9005375dBf039 # rey
+  - 0x630e2aDAEE1136F14E4bA7130dB6845D4cDA0b4E # data
+  - 0x332883EfB2aC47AD762d0ee1ef998507E20B9774 # twitter

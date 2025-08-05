@@ -1,0 +1,16 @@
+Unit]
+Description=Galactica Merkle instance %i
+After=default.target
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/mkdir -p /home/deploy/galacticad-merkle-%i
+ExecStart=/home/deploy/go/bin/galacticad-merkle-%i indexer start --config /home/deploy/galacticad-merkle-%i/merkle-%i.yaml --home /home/deploy/galacticad-merkle-%i --grpc-gateway.address merkle-%i:8480  --grpc.address merkle-%i:50651
+WorkingDirectory=/home/deploy/galacticad-merkle-%i
+Restart=always
+RestartSec=5
+RestartKillSignal=SIGTERM
+TimeoutStopSec=90s
+
+[Install]
+WantedBy=default.target
