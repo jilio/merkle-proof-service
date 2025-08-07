@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Galactica Network
+ * Copyright 2025 Galactica Network
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -128,7 +128,7 @@ func (ixr *Indexer) IndexEVMLogs(ctx context.Context, query ethereum.FilterQuery
 	getBlockCancel()
 
 	if startBlock > currentBlock {
-		return fmt.Errorf("start block is greater than the current block")
+		return fmt.Errorf("start block %d is greater than the current block %d", startBlock, currentBlock)
 	}
 
 	fromBlock := startBlock
