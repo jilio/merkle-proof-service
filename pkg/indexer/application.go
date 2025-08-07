@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Galactica Network
+ * Copyright 2025 Galactica Network
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -172,12 +172,12 @@ func (app *Application) Init(ctx context.Context) error {
 	ctxGetBlock, cancelGetBlock := context.WithTimeout(ctx, 15*time.Second)
 	defer cancelGetBlock()
 
-	latestBlock, err := app.ethereumClient.BlockByNumber(ctxGetBlock, nil)
+	latestBlock, err := app.ethereumClient.BlockNumber(ctxGetBlock)
 	if err != nil {
 		app.logger.Error("get latest block", "error", err)
 		return fmt.Errorf("get latest block: %w", err)
 	}
-	app.logger.Info("latest block", "number", latestBlock.Number().Uint64())
+	app.logger.Info("latest block", "number", latestBlock)
 
 	// Initialize storage
 	app.logger.Info("initializing db", "db_backend", app.config.DbBackend, "db_path", app.config.DbPath)
