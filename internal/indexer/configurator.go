@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Galactica Network
+ * Copyright 2025 Galactica Network
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -98,7 +98,7 @@ func InitConfiguratorFromStorage(
 			Address:    job.Address,
 			Contract:   job.Contract,
 			StartBlock: job.StartBlock,
-		}, job.CurrentBlock+1); err != nil {
+		}, job.CurrentBlock); err != nil {
 			return nil, fmt.Errorf("start job: %w", err)
 		}
 	}
