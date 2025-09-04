@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Galactica Network
+ * Copyright 2025 Galactica Network
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ func (s *Server) GetEmptyLeafProof(ctx context.Context, req *merklegen.GetEmptyL
 	address := common.HexToAddress(req.Registry)
 	registry, err := s.registryService.ZKCertificateRegistry(ctx, address)
 	if err != nil {
+		s.logger.Error("Call method GetEmptyLeafProof", "error", err)
 		return nil, status.Errorf(codes.NotFound, "tree not found: %s", req.Registry)
 	}
 
