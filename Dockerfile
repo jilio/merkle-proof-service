@@ -27,4 +27,4 @@ EXPOSE 50651
 # grpc-gateway port
 EXPOSE 8480
 
-CMD ["./galacticad-merkle", "indexer", "start", "--home", ".galacticad-merkle"]
+CMD ["./galacticad-merkle", "indexer", "start", "--home", ".galacticad-merkle", "--config", ".galacticad-merkle/merkle-843843.yaml"]
