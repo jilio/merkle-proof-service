@@ -8,7 +8,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 
-ARG DB_BACKEND=goleveldb
+ARG DB_BACKEND=pebbledb
 RUN make build DB_BACKEND=${DB_BACKEND}
 
 FROM alpine:latest
@@ -18,7 +18,7 @@ WORKDIR /root/
 RUN mkdir -p .galacticad-merkle
 
 COPY --from=builder /app/build/galacticad-merkle .
-COPY --from=builder /app/config/merkle-41238.yaml ./.galacticad-merkle/merkle-41238.yaml
+COPY --from=builder /app/config/merkle-843843.yaml ./.galacticad-merkle/merkle-843843.yaml
 
 VOLUME /root/.galacticad-merkle
 
