@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
+	"sync"
 
 	"github.com/holiman/uint256"
 	"github.com/iden3/go-iden3-crypto/ff"
@@ -409,4 +410,251 @@ func makeDefaultSeedForEmptyLeaf() []byte {
 	hash := sha3.NewLegacyKeccak256()
 	hash.Write([]byte(EmptyLeafSeed))
 	return hash.Sum(nil)
+}
+
+// BatchProofResult holds the proof for a single operation in a batch
+type BatchProofResult struct {
+	Index TreeLeafIndex
+	Path  []*uint256.Int
+}
+
+// SimulationBatch is a lightweight batch for simulating operations without database access
+type SimulationBatch struct {
+	storage TreeLeafGetter
+	buffer  map[string]*uint256.Int
+	mu      sync.RWMutex
+}
+
+// NewSimulationBatch creates a new simulation batch
+func NewSimulationBatch(storage TreeLeafGetter) *SimulationBatch {
+	return &SimulationBatch{
+		storage: storage,
+		buffer:  make(map[string]*uint256.Int),
+		mu:      sync.RWMutex{},
+	}
+}
+
+// makeSimKey creates a key for the simulation buffer
+func makeSimKey(level TreeLevel, index TreeLeafIndex) string {
+	return fmt.Sprintf("%d:%d", level, index)
+}
+
+// GetLeaf implements TreeLeafGetter
+func (s *SimulationBatch) GetLeaf(ctx context.Context, level TreeLevel, index TreeLeafIndex) (*uint256.Int, error) {
+	s.mu.RLock()
+	key := makeSimKey(level, index)
+	value, ok := s.buffer[key]
+	s.mu.RUnlock()
+	
+	if ok {
+		return value, nil
+	}
+	
+	// Fall back to storage
+	return s.storage.GetLeaf(ctx, level, index)
+}
+
+// SetLeaf implements TreeLeafGetterSetter
+func (s *SimulationBatch) SetLeaf(ctx context.Context, level TreeLevel, index TreeLeafIndex, value *uint256.Int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	key := makeSimKey(level, index)
+	s.buffer[key] = value
+	return nil
+}
+
+// SimulateBatchOperations simulates a batch of operations and returns proofs for each operation.
+// Each proof is valid against the tree state after all previous operations in the batch have been applied.
+// This allows the Queue Processor to submit all operations in a single transaction.
+func (t *SparseMerkleTree) SimulateBatchOperations(
+	ctx context.Context,
+	operations []LeafOperation,
+) (initialRoot *uint256.Int, proofs []BatchProofResult, err error) {
+	// Get the initial root before any operations
+	initialRoot, err = t.GetRoot(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get initial root: %w", err)
+	}
+
+	// Create a simulation batch to track state changes without modifying storage
+	simulationBatch := NewSimulationBatch(t.storageLeafGetter)
+	
+	proofs = make([]BatchProofResult, 0, len(operations))
+
+	for i, op := range operations {
+		select {
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		default:
+		}
+
+		var leafIndex TreeLeafIndex
+		var proof MerkleProof
+
+		switch op.Op {
+		case OperationAddition:
+			// For additions, find an empty leaf index
+			leafIndex, err = t.findEmptyLeafIndexInSimulation(ctx, simulationBatch)
+			if err != nil {
+				return nil, nil, fmt.Errorf("find empty leaf index for operation %d: %w", i, err)
+			}
+
+			// Generate proof that the current leaf is empty
+			proof, err = t.createProofWithBatch(ctx, simulationBatch, leafIndex)
+			if err != nil {
+				return nil, nil, fmt.Errorf("create proof for addition at index %d: %w", leafIndex, err)
+			}
+
+			// Verify the proof shows an empty leaf
+			if !proof.Leaf.Eq(t.emtpyLeaf) {
+				return nil, nil, fmt.Errorf("leaf at index %d is not empty", leafIndex)
+			}
+
+			// Apply the addition to the simulation
+			if err := t.InsertLeaf(ctx, simulationBatch, leafIndex, op.Leaf.Value); err != nil {
+				return nil, nil, fmt.Errorf("insert leaf at index %d: %w", leafIndex, err)
+			}
+
+		case OperationRevocation:
+			// For revocations, find the leaf with the given value
+			leafIndex, err = t.findLeafByValueInSimulation(ctx, simulationBatch, op.Leaf.Value)
+			if err != nil {
+				return nil, nil, fmt.Errorf("find leaf for revocation %d: %w", i, err)
+			}
+
+			// Generate proof for the current leaf value
+			proof, err = t.createProofWithBatch(ctx, simulationBatch, leafIndex)
+			if err != nil {
+				return nil, nil, fmt.Errorf("create proof for revocation at index %d: %w", leafIndex, err)
+			}
+
+			// Verify the proof shows the expected leaf value
+			if !proof.Leaf.Eq(op.Leaf.Value) {
+				return nil, nil, fmt.Errorf("leaf at index %d does not match expected value", leafIndex)
+			}
+
+			// Apply the revocation (set to empty leaf)
+			if err := t.InsertLeaf(ctx, simulationBatch, leafIndex, t.emtpyLeaf); err != nil {
+				return nil, nil, fmt.Errorf("revoke leaf at index %d: %w", leafIndex, err)
+			}
+
+		default:
+			return nil, nil, fmt.Errorf("unknown operation type: %d", op.Op)
+		}
+
+		// Store the proof result
+		proofs = append(proofs, BatchProofResult{
+			Index: leafIndex,
+			Path:  proof.Path,
+		})
+	}
+
+	return initialRoot, proofs, nil
+}
+
+// findEmptyLeafIndexInSimulation finds an empty leaf index considering the simulation state
+func (t *SparseMerkleTree) findEmptyLeafIndexInSimulation(
+	ctx context.Context,
+	batch TreeLeafGetterSetter,
+) (TreeLeafIndex, error) {
+	maxIterations := maxIterationsEmptyLeafProof
+	for maxIterations > 0 {
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		default:
+		}
+
+		index := TreeLeafIndex(rand.Uint64() % t.maxLeaves())
+
+		// Check if the leaf is empty in the simulation
+		leaf, err := t.getLeafFromBatchOrStorage(ctx, batch, 0, index)
+		if err != nil {
+			return 0, fmt.Errorf("get leaf: %w", err)
+		}
+
+		if leaf.Eq(t.emtpyLeaf) {
+			return index, nil
+		}
+
+		maxIterations--
+	}
+
+	return 0, fmt.Errorf("could not find an empty leaf index")
+}
+
+// findLeafByValueInSimulation finds a leaf with the given value considering the simulation state
+func (t *SparseMerkleTree) findLeafByValueInSimulation(
+	ctx context.Context,
+	batch TreeLeafGetterSetter,
+	value *uint256.Int,
+) (TreeLeafIndex, error) {
+	// This is a naive implementation that scans all leaves
+	// In production, we should maintain an index of leaf values to indices
+	maxLeaves := t.maxLeaves()
+	
+	for i := uint64(0); i < maxLeaves; i++ {
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		default:
+		}
+
+		index := TreeLeafIndex(i)
+		leaf, err := t.getLeafFromBatchOrStorage(ctx, batch, 0, index)
+		if err != nil {
+			continue // Skip on error, leaf might not exist
+		}
+
+		if leaf.Eq(value) {
+			return index, nil
+		}
+	}
+
+	return 0, fmt.Errorf("leaf with value not found")
+}
+
+// createProofWithBatch creates a proof using the simulation batch
+func (t *SparseMerkleTree) createProofWithBatch(
+	ctx context.Context,
+	batch TreeLeafGetterSetter,
+	index TreeLeafIndex,
+) (MerkleProof, error) {
+	pathElements := make([]*uint256.Int, t.depth)
+	leaf, err := t.getLeafFromBatchOrStorage(ctx, batch, 0, index)
+	if err != nil {
+		return MerkleProof{}, fmt.Errorf("retrieve leaf: %w", err)
+	}
+
+	pathIndex := index
+	for level := TreeLevel(0); level < t.depth; level++ {
+		select {
+		case <-ctx.Done():
+			return MerkleProof{}, ctx.Err()
+		default:
+		}
+
+		// Get sibling element
+		siblingIndex := pathIndex ^ 1 // XOR with 1 to get sibling
+		pathElements[level], err = t.getLeafFromBatchOrStorage(ctx, batch, level, siblingIndex)
+		if err != nil {
+			return MerkleProof{}, fmt.Errorf("retrieve sibling at level %d: %w", level, err)
+		}
+
+		pathIndex = pathIndex / 2
+	}
+
+	// Get root from the simulation
+	root, err := t.getLeafFromBatchOrStorage(ctx, batch, t.depth, 0)
+	if err != nil {
+		return MerkleProof{}, fmt.Errorf("get root: %w", err)
+	}
+
+	return MerkleProof{
+		Leaf:  leaf,
+		Path:  pathElements,
+		Index: index,
+		Root:  root,
+	}, nil
 }

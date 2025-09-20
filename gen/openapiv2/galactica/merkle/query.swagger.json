@@ -16,6 +16,46 @@
     "application/json"
   ],
   "paths": {
+    "/v1/galactica/merkle/batch_proofs/{registry}": {
+      "post": {
+        "summary": "GetBatchProofs queries proofs for a batch of additions or revocations.",
+        "operationId": "GetBatchProofs",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/galactica.merkle.QueryBatchProofsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/google.rpc.Status"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "registry",
+            "description": "registry is the ZkCertificateRegistry hex address, which starts with 0x.",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/galactica.merkle.Query.GetBatchProofsBody"
+            }
+          }
+        ],
+        "tags": [
+          "Query"
+        ]
+      }
+    },
     "/v1/galactica/merkle/empty_proof/{registry}": {
       "get": {
         "summary": "GetEmptyLeafProof queries the proof of the any empty leaf in the merkle tree.",
@@ -89,6 +129,38 @@
     }
   },
   "definitions": {
+    "galactica.merkle.BatchOperation": {
+      "type": "object",
+      "properties": {
+        "leaf_hash": {
+          "type": "string",
+          "description": "leaf_hash is the leaf hash (uint256 string)."
+        },
+        "is_addition": {
+          "type": "boolean",
+          "description": "is_addition indicates if this is an addition (true) or revocation (false)."
+        }
+      },
+      "description": "BatchOperation represents a single operation in the batch."
+    },
+    "galactica.merkle.BatchProof": {
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer",
+          "format": "int64",
+          "description": "index is the leaf index."
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "path is the proof siblings (uint256 strings)."
+        }
+      },
+      "description": "BatchProof represents a proof in the batch."
+    },
     "galactica.merkle.GetEmptyLeafProofResponse": {
       "type": "object",
       "properties": {
@@ -124,6 +196,38 @@
         }
       },
       "description": "Proof is the merkle proof."
+    },
+    "galactica.merkle.Query.GetBatchProofsBody": {
+      "type": "object",
+      "properties": {
+        "operations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/galactica.merkle.BatchOperation"
+          },
+          "description": "operations is the list of batch operations to process."
+        }
+      },
+      "description": "QueryBatchProofsRequest is the request type for the Query.GetBatchProofs method."
+    },
+    "galactica.merkle.QueryBatchProofsResponse": {
+      "type": "object",
+      "properties": {
+        "initial_root": {
+          "type": "string",
+          "description": "initial_root is the merkle root before the batch operations."
+        },
+        "proofs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/galactica.merkle.BatchProof"
+          },
+          "description": "proofs is the list of batch proofs."
+        }
+      },
+      "description": "QueryBatchProofsResponse is the response type for the Query.GetBatchProofs method."
     },
     "galactica.merkle.QueryProofResponse": {
       "type": "object",
