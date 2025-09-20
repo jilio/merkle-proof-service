@@ -17,6 +17,12 @@ service Query {
   rpc GetEmptyLeafProof (GetEmptyLeafProofRequest) returns (GetEmptyLeafProofResponse) {
     option (google.api.http).get = "/v1/galactica/merkle/empty_proof/{registry}";
   }
+
+  // GetBatchProofs queries proofs for a batch of additions or revocations.
+  rpc GetBatchProofs (QueryBatchProofsRequest) returns (QueryBatchProofsResponse) {
+    option (google.api.http).post = "/v1/galactica/merkle/batch_proofs/{registry}";
+    option (google.api.http).body = "*";
+  }
 }
 
 // QueryProofRequest is the request type for the Query.Proof method.
@@ -59,4 +65,40 @@ message Proof {
 
   // root is the merkle root, value encoded as a string containing the uint256 value.
   string root = 4;
+}
+
+// QueryBatchProofsRequest is the request type for the Query.GetBatchProofs method.
+message QueryBatchProofsRequest {
+  // registry is the ZkCertificateRegistry hex address, which starts with 0x.
+  string registry = 1;
+  
+  // operations is the list of batch operations to process.
+  repeated BatchOperation operations = 2;
+}
+
+// BatchOperation represents a single operation in the batch.
+message BatchOperation {
+  // leaf_hash is the leaf hash (uint256 string).
+  string leaf_hash = 1;
+  
+  // is_addition indicates if this is an addition (true) or revocation (false).
+  bool is_addition = 2;
+}
+
+// QueryBatchProofsResponse is the response type for the Query.GetBatchProofs method.
+message QueryBatchProofsResponse {
+  // initial_root is the merkle root before the batch operations.
+  string initial_root = 1;
+  
+  // proofs is the list of batch proofs.
+  repeated BatchProof proofs = 2;
+}
+
+// BatchProof represents a proof in the batch.
+message BatchProof {
+  // index is the leaf index.
+  uint32 index = 1;
+  
+  // path is the proof siblings (uint256 strings).
+  repeated string path = 2;
 }
