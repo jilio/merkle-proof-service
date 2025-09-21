@@ -5,10 +5,10 @@ evm_rpc: wss://galactica-cassiopeia.g.alchemy.com/public
 db_backend: pebbledb
 
 grpc:
-  address: localhost:50651
+  address: 0.0.0.0:50651
 
 grpc_gateway:
-  address: localhost:8480
+  address: 0.0.0.0:8480
 
 indexer:
   # The indexer mode can be either "poll" or "ws"
