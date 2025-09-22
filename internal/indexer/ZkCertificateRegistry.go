@@ -34,8 +34,7 @@ import (
 )
 
 const (
-	EventZKCertificateAddition   = "zkCertificateAddition"
-	EventZKCertificateRevocation = "zkCertificateRevocation"
+	EventCertificateProcessed = "CertificateProcessed"
 
 	ctxOperationsBufferKey ctxKey = "operations"
 )
@@ -89,14 +88,9 @@ func (job *ZkCertificateRegistryJob) HandleEVMLog(ctx context.Context, log types
 	}
 
 	switch log.Topics[0] {
-	case contractABI.Events[EventZKCertificateAddition].ID:
-		if err := job.handleZkCertificateAdditionLog(ctx, log); err != nil {
-			return fmt.Errorf("handle ZkCertificateAddition log: %w", err)
-		}
-
-	case contractABI.Events[EventZKCertificateRevocation].ID:
-		if err := job.handleZkCertificateRevocationLog(ctx, log); err != nil {
-			return fmt.Errorf("handle ZkCertificateRevocation log: %w", err)
+	case contractABI.Events[EventCertificateProcessed].ID:
+		if err := job.handleCertificateProcessedLog(ctx, log); err != nil {
+			return fmt.Errorf("handle CertificateProcessed log: %w", err)
 		}
 
 	default:
@@ -164,8 +158,7 @@ func (job *ZkCertificateRegistryJob) FilterQuery() (ethereum.FilterQuery, error)
 
 	topics, err := abi.MakeTopics(
 		[]interface{}{
-			contractABI.Events[EventZKCertificateAddition].ID,
-			contractABI.Events[EventZKCertificateRevocation].ID,
+			contractABI.Events[EventCertificateProcessed].ID,
 		},
 	)
 	if err != nil {
@@ -180,23 +173,23 @@ func (job *ZkCertificateRegistryJob) FilterQuery() (ethereum.FilterQuery, error)
 	return query, nil
 }
 
-// handleZkCertificateAdditionLog handles the zkKYCRecordAddition log and updates the leaves buffer.
-func (job *ZkCertificateRegistryJob) handleZkCertificateAdditionLog(ctx context.Context, log types.Log) error {
+// handleCertificateProcessedLog handles the CertificateProcessed log and updates the leaves buffer.
+func (job *ZkCertificateRegistryJob) handleCertificateProcessedLog(ctx context.Context, log types.Log) error {
 	parser, err := job.getParserLazy()
 	if err != nil {
 		return fmt.Errorf("get parser: %w", err)
 	}
 
-	zkCertificateAddition, err := parser.ParseZkCertificateAddition(log)
+	certificateProcessed, err := parser.ParseCertificateProcessed(log)
 	if err != nil {
-		return fmt.Errorf("parse zkCertificateAddition: %w", err)
+		return fmt.Errorf("parse CertificateProcessed: %w", err)
 	}
 
-	indexU64 := zkCertificateAddition.Index.Uint64()
+	indexU64 := certificateProcessed.LeafIndex.Uint64()
 	index := zkregistry.TreeLeafIndex(indexU64)
-	leaf, overflow := uint256.FromBig(new(big.Int).SetBytes(zkCertificateAddition.ZkCertificateLeafHash[:]))
+	leaf, overflow := uint256.FromBig(new(big.Int).SetBytes(certificateProcessed.ZkCertificateLeafHash[:]))
 	if overflow {
-		return fmt.Errorf("zkCertificateAddition: leaf hash overflow for index %d", index)
+		return fmt.Errorf("CertificateProcessed: leaf hash overflow for index %d", index)
 	}
 
 	operationsBuffer, ok := OperationsBufferFromContext(ctx)
@@ -204,44 +197,21 @@ func (job *ZkCertificateRegistryJob) handleZkCertificateAdditionLog(ctx context.
 		return fmt.Errorf("operations buffer not found in context")
 	}
 
-	if err := operationsBuffer.AppendAddition(index, leaf); err != nil {
-		return fmt.Errorf("append operation to buffer: %w", err)
+	// Operation: 0 = Addition, 1 = Revocation
+	switch certificateProcessed.Operation {
+	case 0: // Addition
+		if err := operationsBuffer.AppendAddition(index, leaf); err != nil {
+			return fmt.Errorf("append addition operation to buffer: %w", err)
+		}
+		job.logger.Info("found certificate addition", "index", index, "value", leaf.String())
+	case 1: // Revocation
+		if err := operationsBuffer.AppendRevocation(index, leaf); err != nil {
+			return fmt.Errorf("append revocation operation to buffer: %w", err)
+		}
+		job.logger.Info("found certificate revocation", "index", index, "value", leaf.String())
+	default:
+		return fmt.Errorf("unknown operation type: %d", certificateProcessed.Operation)
 	}
-
-	job.logger.Info("found zkCertificateAddition", "index", index, "value", leaf.String())
-
-	return nil
-}
-
-// handleZkCertificateRevocationLog handles the ZkCertificateRevocation log and updates the leaves buffer.
-func (job *ZkCertificateRegistryJob) handleZkCertificateRevocationLog(ctx context.Context, log types.Log) error {
-	parser, err := job.getParserLazy()
-	if err != nil {
-		return fmt.Errorf("get parser: %w", err)
-	}
-
-	zkKYCRecordRevocation, err := parser.ParseZkCertificateRevocation(log)
-	if err != nil {
-		return fmt.Errorf("parse ZkCertificateRevocation: %w", err)
-	}
-
-	indexU64 := zkKYCRecordRevocation.Index.Uint64()
-	index := zkregistry.TreeLeafIndex(indexU64)
-	leaf, overflow := uint256.FromBig(new(big.Int).SetBytes(zkKYCRecordRevocation.ZkCertificateLeafHash[:]))
-	if overflow {
-		return fmt.Errorf("ZkCertificateRevocation: leaf hash overflow for index %d", index)
-	}
-
-	leavesBuffer, ok := OperationsBufferFromContext(ctx)
-	if !ok {
-		return fmt.Errorf("operations buffer not found in context")
-	}
-
-	if err := leavesBuffer.AppendRevocation(index, leaf); err != nil {
-		return fmt.Errorf("append operation to buffer: %w", err)
-	}
-
-	job.logger.Info("found ZkCertificateRevocation", "index", index, "value", leaf.String())
 
 	return nil
 }
